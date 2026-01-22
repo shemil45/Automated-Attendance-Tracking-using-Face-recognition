@@ -4,12 +4,14 @@ Integrates with existing FaceNet recognition system for attendance
 """
 import cv2
 import numpy as np
-import pickle
 from pathlib import Path
 from keras_facenet import FaceNet
 import urllib.request
 import threading
 from typing import Dict, Set, Optional
+
+from .database import SessionLocal, init_db
+from .models import FaceEncoding
 
 class FaceRecognitionService:
     """Service for real-time face recognition during attendance sessions"""
@@ -17,7 +19,6 @@ class FaceRecognitionService:
     def __init__(self):
         """Initialize the face recognition service"""
         self.base_dir = Path(__file__).parent.parent
-        self.encodings_path = self.base_dir / "models" / "encodings.pkl"
         
         # Initialize FaceNet
         print("Loading FaceNet model...")
@@ -31,11 +32,18 @@ class FaceRecognitionService:
         
         # Recognition settings
         self.recognition_threshold = 0.6
-       
-        # Load known face encodings
+        
+        # Load known face encodings from DB
         self.known_encodings = []
         self.known_names = []
-        self.load_encodings()
+        
+        try:
+            # Try loading from DB
+            self.load_encodings_from_db()
+        except Exception as e:
+            print(f"Database unavailable for encodings: {e}")
+            print("Attempting to load from local backup...")
+            self.load_encodings_from_file()
         
         # Active sessions tracking
         self.active_sessions: Dict[int, dict] = {}
@@ -62,27 +70,58 @@ class FaceRecognitionService:
         
         return cv2.dnn.readNetFromCaffe(str(prototxt_path), str(model_path))
     
-    def load_encodings(self):
-        """Load saved face encodings"""
-        if not self.encodings_path.exists():
-            print(f"Warning: Encodings file not found: {self.encodings_path}")
+    def load_encodings_from_db(self):
+        """Load encodings from database"""
+        print("Loading encodings from database...")
+        # Ensure tables exist (helpful for first run)
+        try:
+            init_db()
+        except:
+            pass
+
+        db = SessionLocal()
+        try:
+            encodings = db.query(FaceEncoding).all()
+            
+            self.known_encodings = []
+            self.known_names = []
+            
+            for item in encodings:
+                self.known_names.append(item.name)
+                # Convert bytes back to numpy array
+                nparr = np.frombuffer(item.encoding, dtype=np.float32)
+                self.known_encodings.append(nparr)
+                
+            print(f"✓ Loaded {len(self.known_encodings)} encodings from database")
+            return True
+        finally:
+            db.close()
+
+    def load_encodings_from_file(self):
+        """Fallback: Load saved face encodings from pickle"""
+        import pickle
+        encodings_path = self.base_dir / "models" / "encodings.pkl"
+        
+        if not encodings_path.exists():
+            print(f"Warning: Encodings file not found: {encodings_path}")
             return False
         
-        with open(self.encodings_path, "rb") as f:
+        with open(encodings_path, "rb") as f:
             data = pickle.load(f)
         
         self.known_encodings = data["encodings"]
         self.known_names = data["names"]
-        
-        unique_names = set(self.known_names)
-        print(f"✓ Loaded {len(self.known_encodings)} encodings for {len(unique_names)} people")
-        
+            
+        print(f"✓ Loaded {len(self.known_encodings)} encodings from file backup")
         return True
     
     def reload_encodings(self):
         """Reload encodings (for new students)"""
         print("Reloading face encodings...")
-        return self.load_encodings()
+        try:
+            return self.load_encodings_from_db()
+        except:
+            return self.load_encodings_from_file()
     
     def get_face_encoding(self, face_image):
         """Generate face encoding using FaceNet"""
@@ -112,7 +151,11 @@ class FaceRecognitionService:
         # Calculate distances to all known faces
         distances = []
         for known_encoding in self.known_encodings:
-            distance = np.linalg.norm(known_encoding - face_encoding)
+            # Ensure safe comparison
+            try:
+                distance = np.linalg.norm(known_encoding - face_encoding)
+            except:
+                distance = 100.0 # High distance on error
             distances.append(distance)
         
         # Find best match
@@ -203,7 +246,7 @@ class FaceRecognitionService:
                             print(f"Session {session_id}: Recognized {name}")
 
         return recognized_in_frame
-
+    
     def get_recognized_students(self, session_id: int) -> Set[str]:
         """Get the set of recognized student names for a session"""
         if session_id not in self.active_sessions:

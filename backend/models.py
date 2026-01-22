@@ -1,7 +1,7 @@
 """
 SQLAlchemy ORM Models
 """
-from sqlalchemy import Column, Integer, String, DateTime, Date, Time, Boolean, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Date, Time, Boolean, Enum, ForeignKey, LargeBinary
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum

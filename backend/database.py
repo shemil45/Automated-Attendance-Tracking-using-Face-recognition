@@ -5,13 +5,22 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# SQLite database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///./attendance.db"
+import os
+
+# Database URL
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./attendance.db")
+
+# Fix for Render's postgres:// URLs (SQLAlchemy requires postgresql://)
+if SQLALCHEMY_DATABASE_URL and SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# Connect args (only for SQLite)
+connect_args = {"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}
 
 # Create engine
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, 
-    connect_args={"check_same_thread": False}  # Needed for SQLite
+    connect_args=connect_args
 )
 
 # Create SessionLocal class

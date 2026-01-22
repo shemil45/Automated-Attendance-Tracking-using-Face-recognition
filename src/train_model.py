@@ -1,14 +1,16 @@
-"""
-Face Recognition Training Script
-Generates face encodings using FaceNet and saves them for recognition
-"""
-
 import cv2
 import numpy as np
 import pickle
 from pathlib import Path
 from keras_facenet import FaceNet
 import urllib.request
+import sys
+import os
+
+# Add root directory to path to import backend modules
+sys.path.append(str(Path(__file__).parent.parent))
+from backend.database import SessionLocal, init_db
+from backend.models import FaceEncoding
 
 class FaceTrainer:
     def __init__(self):
@@ -29,9 +31,8 @@ class FaceTrainer:
         self.face_detector = self._load_face_detector()
         print("✓ Face detector loaded")
         
-        # Storage for encodings
-        self.encodings = []
-        self.names = []
+        # In-memory storage for current training session
+        self.new_encodings = []
     
     def _load_face_detector(self):
         """Load OpenCV DNN face detector"""
@@ -55,15 +56,7 @@ class FaceTrainer:
         return cv2.dnn.readNetFromCaffe(str(prototxt_path), str(model_path))
         
     def detect_and_crop_face(self, image):
-        """
-        Detect face in image and return cropped face
-        
-        Args:
-            image: Input image (BGR format)
-            
-        Returns:
-            Cropped face image or None if no face detected
-        """
+        """Detect face in image and return cropped face"""
         h, w = image.shape[:2]
         
         # Prepare image for DNN
@@ -101,15 +94,7 @@ class FaceTrainer:
         return face
     
     def get_face_encoding(self, face_image):
-        """
-        Generate face encoding using FaceNet
-        
-        Args:
-            face_image: Cropped face image
-            
-        Returns:
-            128-dimensional face encoding
-        """
+        """Generate face encoding using FaceNet"""
         # Resize to 160x160 (FaceNet input size)
         face_resized = cv2.resize(face_image, (160, 160))
         
@@ -124,22 +109,7 @@ class FaceTrainer:
         
         return embedding[0]
     
-    def load_encodings(self):
-        """Load existing encodings if available"""
-        output_path = self.models_dir / "encodings.pkl"
-        if output_path.exists():
-            print(f"Loading existing encodings from: {output_path}")
-            try:
-                with open(output_path, "rb") as f:
-                    data = pickle.load(f)
-                    self.encodings = data.get("encodings", [])
-                    self.names = data.get("names", [])
-                    print(f"✓ Loaded {len(self.encodings)} existing encodings for {len(set(self.names))} people")
-            except Exception as e:
-                print(f"⚠ Warning: Could not load existing encodings: {e}")
-                print("Starting with empty encodings.")
-
-    def load_training_data(self):
+    def process_images(self):
         """Load and process all training images"""
         if not self.data_dir.exists():
             print(f"Error: Data directory not found: {self.data_dir}")
@@ -157,7 +127,7 @@ class FaceTrainer:
         print(f"{'='*60}\n")
         
         total_images = 0
-        successful_encodings = 0
+        self.new_encodings = []
         
         for person_dir in person_dirs:
             person_name = person_dir.name
@@ -166,22 +136,6 @@ class FaceTrainer:
             if not image_files:
                 print(f"⚠ No images found for {person_name}")
                 continue
-
-            # Deduplication: Remove existing encodings for this person
-            if person_name in self.names:
-                print(f"↻ Re-processing {person_name}: Removing old encodings...")
-                # Create a new list keeping only those NOT matching the current person
-                new_encodings = []
-                new_names = []
-                for enc, name in zip(self.encodings, self.names):
-                    if name != person_name:
-                        new_encodings.append(enc)
-                        new_names.append(name)
-                
-                removed_count = len(self.names) - len(new_names)
-                self.encodings = new_encodings
-                self.names = new_names
-                print(f"  - Removed {removed_count} old encodings")
 
             print(f"Processing {person_name}: {len(image_files)} images")
             
@@ -205,9 +159,10 @@ class FaceTrainer:
                 # Generate encoding
                 try:
                     encoding = self.get_face_encoding(face)
-                    self.encodings.append(encoding)
-                    self.names.append(person_name)
-                    successful_encodings += 1
+                    self.new_encodings.append({
+                        "name": person_name,
+                        "encoding": encoding
+                    })
                     print(f"  ✓ Encoded: {img_path.name}")
                 except Exception as e:
                     print(f"  ✗ Encoding failed for {img_path.name}: {e}")
@@ -217,58 +172,96 @@ class FaceTrainer:
         print(f"{'='*60}")
         print(f"Summary:")
         print(f"  Total images processed: {total_images}")
-        print(f"  Successful new encodings: {successful_encodings}")
-        print(f"  Total encodings in memory: {len(self.encodings)}")
+        print(f"  New encodings generated: {len(self.new_encodings)}")
         print(f"{'='*60}\n")
         
-        # Return true even if no new encodings, as we might just be saving loaded ones
         return True
     
-    def save_encodings(self):
-        """Save encodings to file"""
-        if not self.encodings:
+    def save_encodings_to_db(self):
+        """Save encodings to PostgreSQL database"""
+        if not self.new_encodings:
             print("Error: No encodings to save")
             return False
-        
+            
+        print("Saving encodings to database...")
+        db = SessionLocal()
+        try:
+            # Optional: Clear existing encodings to avoid duplicates if re-training completely?
+            # Ideally we might want to sync, but for now let's wipe and replace for simplicity 
+            # OR only add new ones? 
+            # Strategy: Delete all encodings for the people we just processed
+            
+            processed_people = set(item["name"] for item in self.new_encodings)
+            print(f"Updating data for: {', '.join(processed_people)}")
+            
+            for person in processed_people:
+                db.query(FaceEncoding).filter(FaceEncoding.name == person).delete()
+            
+            # Add new encodings
+            count = 0
+            for item in self.new_encodings:
+                # Convert numpy array to bytes
+                encoding_bytes = item["encoding"].tobytes()
+                
+                db_obj = FaceEncoding(
+                    name=item["name"],
+                    encoding=encoding_bytes
+                )
+                db.add(db_obj)
+                count += 1
+            
+            db.commit()
+            print(f"✓ Successfully saved {count} encodings to database")
+            return True
+            
+        except Exception as e:
+            print(f"Error saving to database: {e}")
+            db.rollback()
+            return False
+        finally:
+            db.close()
+    
+    def save_local_backup(self):
+        """Save local backup for offline use"""
         output_path = self.models_dir / "encodings.pkl"
         
+        names = [item["name"] for item in self.new_encodings]
+        encodings = [item["encoding"] for item in self.new_encodings]
+        
         data = {
-            "encodings": self.encodings,
-            "names": self.names
+            "encodings": encodings,
+            "names": names
         }
         
         with open(output_path, "wb") as f:
             pickle.dump(data, f)
-        
-        print(f"✓ Encodings saved to: {output_path}")
-        print(f"  Total encodings: {len(self.encodings)}")
-        print(f"  Unique people: {len(set(self.names))}")
-        
-        return True
-    
+        print(f"✓ Local backup saved to: {output_path}")
+
     def train(self):
         """Main training function"""
         print("\n" + "="*60)
         print("Face Recognition - Model Training")
         print("="*60)
         
-        # Load existing encodings
-        self.load_encodings()
+        # Ensure tables exist (helpful if running locally newly)
+        init_db()
         
         # Load and process images
-        if not self.load_training_data():
+        if not self.process_images():
             return False
         
-        # Save encodings
-        if not self.save_encodings():
+        # Save to Database
+        if self.save_encodings_to_db():
+             # Save local backup as well
+            self.save_local_backup()
+            
+            print(f"\n{'='*60}")
+            print("✓ Training completed successfully!")
+            print(f"{'='*60}")
+            print("\nEncodings are now in the database and accessible by the backend.")
+            return True
+        else:
             return False
-        
-        print(f"\n{'='*60}")
-        print("✓ Training completed successfully!")
-        print(f"{'='*60}")
-        print("\nNext step: Run recognize_faces.py for real-time recognition")
-        
-        return True
 
 def main():
     """Main function"""

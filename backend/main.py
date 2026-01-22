@@ -14,6 +14,7 @@ import io
 from . import models, schemas, auth
 from .database import get_db, init_db
 from .face_recognition_service import face_recognition_service
+from .seed_data import seed_database
 
 # Create FastAPI app
 app = FastAPI(title="Attendance Portal API", version="1.0.0")
@@ -21,7 +22,7 @@ app = FastAPI(title="Attendance Portal API", version="1.0.0")
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Vite default port
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "https://*.onrender.com"],  # Allow Render domains
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -31,6 +32,12 @@ app.add_middleware(
 @app.on_event("startup")
 def startup_event():
     init_db()
+    # Auto-seed initial data (safe to run multiple times)
+    try:
+        seed_database()
+        print("✓ Database seeded")
+    except Exception as e:
+        print(f"Warning: Database seeding failed: {e}")
     print("✓ Database initialized")
 
 
