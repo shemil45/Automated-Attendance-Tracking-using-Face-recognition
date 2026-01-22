@@ -133,3 +133,13 @@ class AttendanceRecord(Base):
     __table_args__ = (
         {'sqlite_autoincrement': True},
     )
+
+
+class FaceEncoding(Base):
+    """Face encodings table"""
+    __tablename__ = "face_encodings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    encoding = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
