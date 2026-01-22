@@ -15,5 +15,5 @@ __pycache__/
 .env
 
 # Data
-data/
+data/known_faces/
 
