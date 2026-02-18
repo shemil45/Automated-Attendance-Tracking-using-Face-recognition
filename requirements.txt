@@ -1,21 +1,29 @@
-opencv-python>=4.5.0
-numpy<2.0.0
-pandas>=2.0.0
-openpyxl>=3.1.0
-keras-facenet>=0.3.2
-tensorflow
-mediapipe
-protobuf<4.0.0
-scipy
+# Web framework
 fastapi
 uvicorn[standard]
+python-multipart
+
+# Database
 sqlalchemy
-pydantic
+psycopg2-binary
+python-dotenv
+
+# Auth
 python-jose[cryptography]
 bcrypt>=4.0.0
-python-multipart
-Pillow
-email-validator
-psycopg2-binary
+
+# Face recognition
+opencv-python>=4.5.0
+numpy<2.0.0
+keras-facenet>=0.3.2
+tensorflow>=2.12.0
+
+# Data / Reports
+pandas>=2.0.0
+openpyxl>=3.1.0
+
+# Pydantic (FastAPI dependency)
+pydantic
+
+# Production server (Linux/Render only)
 gunicorn
-python-dotenv
