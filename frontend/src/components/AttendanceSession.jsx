@@ -1,14 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { attendanceAPI } from '../utils/api';
 
-export default function AttendanceSession({ session, onClose }) {
+export default function AttendanceSession() {
+    const { sessionId } = useParams();
+    const location = useLocation();
+    const navigate = useNavigate();
+
+    // Session data comes from router state (passed by Dashboard) or fetched by ID
+    const [session, setSession] = useState(location.state?.session || null);
     const [students, setStudents] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [sessionData, setSessionData] = useState(session);
+    const [initialLoading, setInitialLoading] = useState(true);
     const videoRef = useRef(null);
     const streamRef = useRef(null);
 
+    // If session wasn't passed via state (e.g. direct URL / page refresh), fetch it
     useEffect(() => {
+        if (!session) {
+            attendanceAPI.getSession(sessionId)
+                .then(res => setSession(res.data))
+                .catch(() => navigate('/dashboard'));
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!session) return; // Wait until session data is loaded
+
         startCamera();
         loadStudents();
 
@@ -23,7 +41,7 @@ export default function AttendanceSession({ session, onClose }) {
             clearInterval(frameInterval);
             stopCamera();
         };
-    }, []);
+    }, [session]);
 
     const startCamera = async () => {
         try {
@@ -80,9 +98,19 @@ export default function AttendanceSession({ session, onClose }) {
     const loadStudents = async () => {
         try {
             const response = await attendanceAPI.getSessionStudents(session.id);
-            setStudents(response.data);
+            const sorted = [...response.data].sort((a, b) => {
+                // No marked_at → goes to the bottom
+                if (!a.marked_at && !b.marked_at) return 0;
+                if (!a.marked_at) return 1;
+                if (!b.marked_at) return -1;
+                // Most recently marked → top
+                return new Date(b.marked_at) - new Date(a.marked_at);
+            });
+            setStudents(sorted);
         } catch (err) {
             console.error('Error loading students:', err);
+        } finally {
+            setInitialLoading(false);
         }
     };
 
@@ -104,7 +132,7 @@ export default function AttendanceSession({ session, onClose }) {
         try {
             await attendanceAPI.endSession(session.id);
             stopCamera();
-            onClose();
+            navigate('/dashboard');
         } catch (err) {
             alert('Failed to end session');
             setLoading(false);
@@ -114,6 +142,18 @@ export default function AttendanceSession({ session, onClose }) {
     const presentCount = students.filter(s => s.status === 'present').length;
     const absentCount = students.filter(s => s.status === 'absent').length;
     const odCount = students.filter(s => s.status === 'od').length;
+
+    // Show loading screen while fetching session data (e.g. on page refresh)
+    if (!session) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    <p className="mt-4 text-gray-600">Loading session...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -130,13 +170,21 @@ export default function AttendanceSession({ session, onClose }) {
                                 {session.start_time} - {session.end_time}
                             </p>
                         </div>
-                        <button
-                            onClick={handleEndSession}
-                            disabled={loading}
-                            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium disabled:opacity-50"
-                        >
-                            {loading ? 'Ending...' : 'End Session'}
-                        </button>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => { stopCamera(); navigate('/dashboard'); }}
+                                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium"
+                            >
+                                ← Back
+                            </button>
+                            <button
+                                onClick={handleEndSession}
+                                disabled={loading}
+                                className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium disabled:opacity-50"
+                            >
+                                {loading ? 'Ending...' : 'End Session'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -194,7 +242,9 @@ export default function AttendanceSession({ session, onClose }) {
                     <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
                         <div className="bg-linear-to-r from-purple-600 to-pink-600 px-6 py-4">
                             <h2 className="text-xl font-bold text-white">Student Attendance</h2>
-                            <p className="text-sm text-purple-100">Total: {students.length} students</p>
+                            <p className="text-sm text-purple-100">
+                                {initialLoading ? 'Loading...' : `Total: ${students.length} students`}
+                            </p>
                         </div>
 
                         <div className="overflow-y-auto" style={{ maxHeight: '70vh' }}>
@@ -208,7 +258,19 @@ export default function AttendanceSession({ session, onClose }) {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200">
-                                    {students.map((student) => (
+                                    {initialLoading ? (
+                                        <tr>
+                                            <td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-sm">
+                                                Loading students...
+                                            </td>
+                                        </tr>
+                                    ) : students.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-sm">
+                                                No students found in this class.
+                                            </td>
+                                        </tr>
+                                    ) : students.map((student) => (
                                         <tr key={student.reg_no} className="hover:bg-gray-50 transition">
                                             <td className="px-4 py-3 text-sm font-medium text-gray-900">
                                                 {student.reg_no}
@@ -233,11 +295,11 @@ export default function AttendanceSession({ session, onClose }) {
                                                 </select>
                                             </td>
                                             <td className="px-4 py-3">
-                                                <span className={`px-2 py-1 rounded-full text-xs ${student.marked_by === 'system'
-                                                    ? 'bg-purple-100 text-purple-700'
-                                                    : 'bg-orange-100 text-orange-700'
+                                                <span className={`px-2 py-1 rounded-full text-xs ${student.marked_by === 'faculty'
+                                                    ? 'bg-orange-100 text-orange-700'
+                                                    : 'bg-purple-100 text-purple-700'
                                                     }`}>
-                                                    {student.marked_by === 'system' ? '🤖 System' : '👤 Faculty'}
+                                                    {student.marked_by === 'faculty' ? '👤 Faculty' : '🤖 System'}
                                                 </span>
                                             </td>
                                         </tr>

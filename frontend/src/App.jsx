@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import ReportViewer from './components/ReportViewer';
+import AttendanceSession from './components/AttendanceSession';
 import ProtectedRoute from './components/ProtectedRoute';
 import { auth } from './utils/auth';
 
@@ -27,6 +28,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/session/:sessionId"
+          element={
+            <ProtectedRoute>
+              <AttendanceSession />
             </ProtectedRoute>
           }
         />

@@ -144,7 +144,7 @@ class AttendanceRecordResponse(BaseModel):
     name: str
     status: AttendanceStatusEnum
     marked_by: MarkedByEnum
-    marked_at: datetime
+    marked_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

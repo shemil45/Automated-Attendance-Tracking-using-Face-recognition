@@ -434,25 +434,38 @@ def get_session_students(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    # Get all attendance records
+    # Get ALL students in the class
+    all_students = db.query(models.Student).filter(
+        models.Student.class_name == current_class.class_name
+    ).order_by(models.Student.reg_no).all()
+    
+    # Get existing attendance records for this session
     records = db.query(models.AttendanceRecord).filter(
         models.AttendanceRecord.session_id == session_id
     ).all()
     
-    # Build response
+    # Build a lookup map: reg_no -> record
+    record_map = {r.reg_no: r for r in records}
+    
+    # Build response — every student appears, defaulting to absent if no record yet
     result = []
-    for record in records:
-        student = db.query(models.Student).filter(
-            models.Student.reg_no == record.reg_no
-        ).first()
-        
-        if student:
+    for student in all_students:
+        record = record_map.get(student.reg_no)
+        if record:
             result.append(schemas.AttendanceRecordResponse(
-                reg_no=record.reg_no,
+                reg_no=student.reg_no,
                 name=student.name,
                 status=record.status,
                 marked_by=record.marked_by,
                 marked_at=record.marked_at
+            ))
+        else:
+            result.append(schemas.AttendanceRecordResponse(
+                reg_no=student.reg_no,
+                name=student.name,
+                status=models.AttendanceStatusEnum.ABSENT,
+                marked_by=models.MarkedByEnum.SYSTEM,
+                marked_at=None
             ))
     
     return result
@@ -513,8 +526,24 @@ def get_sessions_by_date(
         models.AttendanceSession.class_name == current_class.class_name,
         models.AttendanceSession.date == date
     ).order_by(models.AttendanceSession.period).all()
-    
-    return sessions
+
+    return [
+        schemas.SessionResponse(
+            id=s.id,
+            class_name=s.class_name,
+            date=s.date.isoformat(),
+            day=s.day,
+            period=s.period,
+            subject_code=s.subject_code,
+            subject_name=s.subject_name,
+            start_time=s.start_time.strftime("%H:%M"),
+            end_time=s.end_time.strftime("%H:%M"),
+            status=s.status,
+            started_at=s.started_at,
+            ended_at=s.ended_at
+        )
+        for s in sessions
+    ]
 
 
 @app.get("/api/reports/session/{session_id}/report", response_model=schemas.SessionReport)

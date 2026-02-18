@@ -4,8 +4,12 @@ Database configuration and setup
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
 
 import os
+
+# Load .env file so DATABASE_URL and other vars are available
+load_dotenv()
 
 # Database URL
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./attendance.db")

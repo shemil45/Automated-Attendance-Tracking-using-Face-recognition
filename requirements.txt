@@ -18,3 +18,4 @@ Pillow
 email-validator
 psycopg2-binary
 gunicorn
+python-dotenv

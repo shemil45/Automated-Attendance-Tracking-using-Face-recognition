@@ -2,13 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { timetableAPI, attendanceAPI, reportsAPI } from '../utils/api';
 import { auth } from '../utils/auth';
-import AttendanceSession from './AttendanceSession';
 
 export default function Dashboard() {
     const [todayTimetable, setTodayTimetable] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [currentSession, setCurrentSession] = useState(null);
     const [showReports, setShowReports] = useState(false);
     const [selectedDate, setSelectedDate] = useState('');
     const [sessions, setSessions] = useState([]);
@@ -39,15 +37,11 @@ export default function Dashboard() {
                 todayTimetable.date,
                 period.period
             );
-            setCurrentSession(response.data);
+            // Navigate to the session page, passing session data via router state
+            navigate(`/session/${response.data.id}`, { state: { session: response.data } });
         } catch (err) {
             alert('Failed to start session: ' + (err.response?.data?.detail || err.message));
         }
-    };
-
-    const handleSessionEnd = () => {
-        setCurrentSession(null);
-        loadTodayTimetable(); // Reload to update statuses
     };
 
     const handleViewReport = (period) => {
@@ -135,9 +129,6 @@ export default function Dashboard() {
         }
     };
 
-    if (currentSession) {
-        return <AttendanceSession session={currentSession} onClose={handleSessionEnd} />;
-    }
 
     if (loading) {
         return (
@@ -161,21 +152,6 @@ export default function Dashboard() {
                             <p className="text-sm text-gray-600">Welcome, {className}</p>
                         </div>
                         <div className="flex gap-3">
-                            <button
-                                onClick={async () => {
-                                    if (confirm('Sync students from CSV database?')) {
-                                        try {
-                                            const res = await import('../utils/api').then(m => m.utilityAPI.syncStudents());
-                                            alert(`Synced Successfully!\nAdded: ${res.data.added}\nUpdated: ${res.data.updated}`);
-                                        } catch (e) {
-                                            alert('Sync Failed');
-                                        }
-                                    }
-                                }}
-                                className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition font-medium"
-                            >
-                                Sync DB
-                            </button>
                             <button
                                 onClick={auth.logout}
                                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium"
