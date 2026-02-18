@@ -17,7 +17,7 @@ from .face_recognition_service import face_recognition_service
 from .seed_data import seed_database
 
 # Create FastAPI app
-app = FastAPI(title="Attendance Portal API", version="1.0.0")
+app = FastAPI(title="AttendNet API", version="1.0.0")
 
 # CORS configuration
 app.add_middleware(

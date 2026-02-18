@@ -10,6 +10,7 @@ export default function Dashboard() {
     const [showReports, setShowReports] = useState(false);
     const [selectedDate, setSelectedDate] = useState('');
     const [sessions, setSessions] = useState([]);
+    const [hasSearched, setHasSearched] = useState(false);
 
     const navigate = useNavigate();
 
@@ -52,10 +53,10 @@ export default function Dashboard() {
 
     const loadSessionsByDate = async () => {
         if (!selectedDate) return;
-
         try {
             const response = await reportsAPI.getSessions(selectedDate);
             setSessions(response.data);
+            setHasSearched(true);
         } catch (err) {
             alert('Failed to load sessions');
         }
@@ -148,7 +149,7 @@ export default function Dashboard() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                     <div className="flex justify-between items-center">
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900">Faculty Portal</h1>
+                            <h1 className="text-2xl font-bold text-gray-900">AttendNet</h1>
                             <p className="text-sm text-gray-600">Welcome, {className}</p>
                         </div>
                         <div className="flex gap-3">
@@ -249,6 +250,14 @@ export default function Dashboard() {
                                 Load Sessions
                             </button>
                         </div>
+
+                        {hasSearched && sessions.length === 0 && (
+                            <div className="flex flex-col items-center justify-center py-12 text-center">
+                                <div className="text-5xl mb-4">📭</div>
+                                <h3 className="text-lg font-semibold text-gray-700">No sessions recorded</h3>
+                                <p className="text-sm text-gray-400 mt-1">No attendance sessions were found for this date.</p>
+                            </div>
+                        )}
 
                         {sessions.length > 0 && (
                             <div className="space-y-3">

@@ -1,6 +1,6 @@
-# 🎓 Automated Attendance Tracking using Face Recognition
+# 🎓 AttendNet — Automated Attendance Tracking using Face Recognition
 
-A faculty-facing web portal that automates student attendance using real-time face recognition powered by **FaceNet** and **MediaPipe**. Faculty can start an attendance session for any class period, and the system automatically recognizes students via webcam.
+A faculty-facing web portal that automates student attendance using real-time face recognition powered by **FaceNet** and **OpenCV**. Faculty can start an attendance session for any class period, and the system automatically recognizes students via webcam.
 
 ---
 
@@ -10,7 +10,7 @@ A faculty-facing web portal that automates student attendance using real-time fa
 |---|---|
 | **Backend** | FastAPI, SQLAlchemy, Python 3.11 |
 | **Frontend** | React 19, Vite, Tailwind CSS |
-| **Face Recognition** | FaceNet (keras-facenet), MediaPipe, OpenCV |
+| **Face Recognition** | FaceNet (keras-facenet), OpenCV DNN |
 | **Database** | Supabase (PostgreSQL) / SQLite (local) |
 | **Auth** | JWT (python-jose) |
 
@@ -58,7 +58,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> ⚠️ TensorFlow and MediaPipe may take a few minutes to install.
+> ⚠️ TensorFlow may take a few minutes to install.
 
 #### c. Configure Environment Variables
 
