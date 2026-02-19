@@ -15,44 +15,61 @@ from backend.models import Student, FaceEncoding, AttendanceRecord
 
 class StudentDatabase:
     def __init__(self):
-        """Initialize — connect to DB"""
+        """Initialize — ensure tables exist"""
         print("\nConnecting to database...")
         init_db()
-        self.db = SessionLocal()
         print("✓ Connected")
 
+    def _new_session(self):
+        """Return a fresh session. Caller must close it."""
+        return SessionLocal()
+
     def close(self):
-        self.db.close()
+        pass  # No persistent session to close
 
     def get_trained_names(self):
         """Get distinct names from face_encodings table in Supabase"""
-        rows = self.db.query(FaceEncoding.name).distinct().all()
-        return sorted([r.name for r in rows])
+        db = self._new_session()
+        try:
+            rows = db.query(FaceEncoding.name).distinct().all()
+            return sorted([r.name for r in rows])
+        finally:
+            db.close()
 
     def list_students(self):
         """List all students currently in the database"""
-        students = self.db.query(Student).order_by(Student.reg_no).all()
-        if not students:
-            print("\nNo students in database.")
-            return
-        print(f"\n{'='*70}")
-        print(f"{'RegNo':<18} {'Name':<25} {'Class':<12} {'Email':<20}")
-        print(f"{'='*70}")
-        for s in students:
-            print(f"{s.reg_no:<18} {s.name:<25} {s.class_name:<12} {s.email or '':<20}")
-        print(f"{'='*70}")
-        print(f"Total: {len(students)} student(s)")
+        db = self._new_session()
+        try:
+            students = db.query(Student).order_by(Student.reg_no).all()
+            if not students:
+                print("\nNo students in database.")
+                return
+            print(f"\n{'='*70}")
+            print(f"{'RegNo':<18} {'Name':<25} {'Class':<12} {'Email':<20}")
+            print(f"{'='*70}")
+            for s in students:
+                print(f"{s.reg_no:<18} {s.name:<25} {s.class_name:<12} {s.email or '':<20}")
+            print(f"{'='*70}")
+            print(f"Total: {len(students)} student(s)")
+        finally:
+            db.close()
 
     def add_student_interactive(self):
         """Interactively add or update a student in the database"""
         trained_names = self.get_trained_names()
 
+        # --- Collect all user input BEFORE opening a DB session ---
         if trained_names:
             print("\nTrained faces found in Supabase (face_encodings table):")
-            for i, name in enumerate(trained_names, 1):
-                exists = self.db.query(Student).filter(Student.name == name).first()
-                status = "✓ In DB" if exists else "✗ Not in DB"
-                print(f"  {i}. {name} — {status}")
+            # Quick read-only check for display only
+            db_check = self._new_session()
+            try:
+                for i, name in enumerate(trained_names, 1):
+                    exists = db_check.query(Student).filter(Student.name == name).first()
+                    status = "✓ In DB" if exists else "✗ Not in DB"
+                    print(f"  {i}. {name} — {status}")
+            finally:
+                db_check.close()
         else:
             print("\n⚠ No trained faces found in Supabase. Run train_model.py first.")
 
@@ -76,53 +93,79 @@ class StudentDatabase:
                 name = name_input
                 break
 
-        # Check if already exists
-        existing = self.db.query(Student).filter(Student.name == name).first()
-        if existing:
-            print(f"\n⚠ {name} already exists in DB:")
-            print(f"   RegNo : {existing.reg_no}")
-            print(f"   Class : {existing.class_name}")
-            print(f"   Email : {existing.email}")
+        # Quick check if student already exists (read-only, short-lived session)
+        db_read = self._new_session()
+        try:
+            existing_data = db_read.query(Student).filter(Student.name == name).first()
+            if existing_data:
+                existing_info = {
+                    "reg_no": existing_data.reg_no,
+                    "class_name": existing_data.class_name,
+                    "email": existing_data.email,
+                }
+                print(f"\n⚠ {name} already exists in DB:")
+                print(f"   RegNo : {existing_info['reg_no']}")
+                print(f"   Class : {existing_info['class_name']}")
+                print(f"   Email : {existing_info['email']}")
+                is_update = True
+            else:
+                existing_info = None
+                is_update = False
+        finally:
+            db_read.close()
+
+        if is_update:
             update = input("\nUpdate this student? (y/n): ").strip().lower()
             if update != 'y':
                 return False
 
-        # Registration number
+        # Registration number — collect input, do quick uniqueness read
         while True:
             regno = input("Registration Number: ").strip()
             if not regno:
                 print("Registration number cannot be empty.")
                 continue
-            # Check uniqueness (ignore current student if updating)
-            duplicate = self.db.query(Student).filter(
-                Student.reg_no == regno
-            ).first()
-            if duplicate and duplicate.name != name:
-                print(f"⚠ RegNo '{regno}' already used by {duplicate.name}. Use a unique RegNo.")
+            db_dup = self._new_session()
+            try:
+                duplicate = db_dup.query(Student).filter(Student.reg_no == regno).first()
+                dup_name = duplicate.name if duplicate else None
+            finally:
+                db_dup.close()
+            if dup_name and dup_name != name:
+                print(f"⚠ RegNo '{regno}' already used by {dup_name}. Use a unique RegNo.")
             else:
                 break
 
         class_name = input("Class/Section (e.g. AIML-A): ").strip()
         email = input("Email (optional): ").strip() or None
 
-        if existing:
-            # Update
-            existing.reg_no = regno
-            existing.class_name = class_name
-            existing.email = email
-            self.db.commit()
-            print(f"\n✓ Updated {name} in database")
-        else:
-            # Insert
-            student = Student(
-                reg_no=regno,
-                name=name,
-                class_name=class_name,
-                email=email
-            )
-            self.db.add(student)
-            self.db.commit()
-            print(f"\n✓ Added {name} to database")
+        # --- All input collected — NOW open a fresh session and commit quickly ---
+        db = self._new_session()
+        try:
+            if is_update:
+                student = db.query(Student).filter(Student.name == name).first()
+                if student:
+                    student.reg_no = regno
+                    student.class_name = class_name
+                    student.email = email
+                    db.commit()
+                    print(f"\n✓ Updated {name} in database")
+            else:
+                student = Student(
+                    reg_no=regno,
+                    name=name,
+                    class_name=class_name,
+                    email=email
+                )
+                db.add(student)
+                db.commit()
+                print(f"\n✓ Added {name} to database")
+        except Exception as e:
+            db.rollback()
+            print(f"\n✗ Database error: {e}")
+            return False
+        finally:
+            db.close()
 
         return True
 
@@ -133,23 +176,41 @@ class StudentDatabase:
         if not regno:
             return
 
-        student = self.db.query(Student).filter(Student.reg_no == regno).first()
-        if not student:
-            print(f"No student found with RegNo '{regno}'")
-            return
+        # Quick read to get student name for confirmation prompt
+        db_read = self._new_session()
+        try:
+            student_data = db_read.query(Student).filter(Student.reg_no == regno).first()
+            if not student_data:
+                print(f"No student found with RegNo '{regno}'")
+                return
+            student_name = student_data.name
+        finally:
+            db_read.close()
 
-        confirm = input(f"Delete {student.name} ({regno})? (y/n): ").strip().lower()
+        confirm = input(f"Delete {student_name} ({regno})? (y/n): ").strip().lower()
         if confirm == 'y':
-            # 1. Delete attendance records (NOT NULL FK — must go first)
-            rec_count = self.db.query(AttendanceRecord).filter(AttendanceRecord.reg_no == regno).delete()
-            # 2. Delete face encodings
-            enc_count = self.db.query(FaceEncoding).filter(FaceEncoding.name == student.name).delete()
-            # 3. Delete student
-            self.db.delete(student)
-            self.db.commit()
-            print(f"✓ Deleted {student.name}")
-            print(f"  └─ {rec_count} attendance record(s) removed")
-            print(f"  └─ {enc_count} face encoding(s) removed")
+            # Fresh session — commit immediately after deletes
+            db = self._new_session()
+            try:
+                student = db.query(Student).filter(Student.reg_no == regno).first()
+                if not student:
+                    print("Student not found (may have been deleted already).")
+                    return
+                # 1. Delete attendance records (NOT NULL FK — must go first)
+                rec_count = db.query(AttendanceRecord).filter(AttendanceRecord.reg_no == regno).delete()
+                # 2. Delete face encodings
+                enc_count = db.query(FaceEncoding).filter(FaceEncoding.name == student.name).delete()
+                # 3. Delete student
+                db.delete(student)
+                db.commit()
+                print(f"✓ Deleted {student_name}")
+                print(f"  └─ {rec_count} attendance record(s) removed")
+                print(f"  └─ {enc_count} face encoding(s) removed")
+            except Exception as e:
+                db.rollback()
+                print(f"✗ Database error: {e}")
+            finally:
+                db.close()
 
     def setup(self):
         """Main interactive menu"""
