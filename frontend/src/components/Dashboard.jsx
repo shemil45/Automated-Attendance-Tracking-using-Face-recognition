@@ -104,7 +104,7 @@ export default function Dashboard() {
             return (
                 <button
                     onClick={() => handleStartSession(period)}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
+                    className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
                 >
                     Start Attendance
                 </button>
@@ -113,7 +113,7 @@ export default function Dashboard() {
             return (
                 <button
                     onClick={() => handleStartSession(period)}
-                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium"
+                    className="w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium"
                 >
                     Open Session
                 </button>
@@ -122,7 +122,7 @@ export default function Dashboard() {
             return (
                 <button
                     onClick={() => handleViewReport(period)}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium"
+                    className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium"
                 >
                     View Report
                 </button>
@@ -186,7 +186,24 @@ export default function Dashboard() {
                         </div>
                     )}
 
-                    <div className="overflow-x-auto">
+                    {/* Mobile Card Layout (shown only on small screens) */}
+                    <div className="block md:hidden divide-y divide-gray-200">
+                        {todayTimetable?.periods.map((period) => (
+                            <div key={period.id} className="p-4 hover:bg-gray-50 transition">
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className="font-semibold text-gray-900">Period {period.period}</span>
+                                    {getStatusBadge(period.status)}
+                                </div>
+                                <p className="text-sm text-gray-500 mb-1">{period.start_time} - {period.end_time}</p>
+                                <p className="text-sm font-medium text-gray-900">{period.subject_name}</p>
+                                <p className="text-xs text-gray-500 mb-3">{period.subject_code}</p>
+                                <div>{getActionButton(period)}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Desktop Table Layout (shown on md and above) */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full">
                             <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr>
@@ -229,8 +246,8 @@ export default function Dashboard() {
                         <h2 className="text-xl font-bold text-white">Previous Attendance Reports</h2>
                     </div>
 
-                    <div className="p-6">
-                        <div className="flex gap-4 items-end mb-6">
+                    <div className="p-4 sm:p-6">
+                        <div className="flex flex-col sm:flex-row gap-3 sm:items-end mb-6">
                             <div className="flex-1">
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     Select Date
@@ -245,7 +262,7 @@ export default function Dashboard() {
                             <button
                                 onClick={loadSessionsByDate}
                                 disabled={!selectedDate}
-                                className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full sm:w-auto px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Load Sessions
                             </button>
@@ -262,8 +279,8 @@ export default function Dashboard() {
                         {sessions.length > 0 && (
                             <div className="space-y-3">
                                 {sessions.map((session) => (
-                                    <div key={session.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                        <div className="flex-1">
+                                    <div key={session.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                        <div className="flex-1 min-w-0">
                                             <h4 className="font-semibold text-gray-900">
                                                 Period {session.period} - {session.subject_name}
                                             </h4>
@@ -271,16 +288,16 @@ export default function Dashboard() {
                                                 {session.start_time} - {session.end_time} | {session.subject_code}
                                             </p>
                                         </div>
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2 shrink-0">
                                             <button
                                                 onClick={() => navigate(`/report/${session.id}`)}
-                                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
+                                                className="flex-1 sm:flex-none px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
                                             >
                                                 View
                                             </button>
                                             <button
                                                 onClick={() => handleDownloadReport(session.id)}
-                                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                                                className="flex-1 sm:flex-none px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
                                             >
                                                 Download Excel
                                             </button>
