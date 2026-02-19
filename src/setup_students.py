@@ -1,193 +1,190 @@
 """
 Student Database Setup Script
-Creates and manages student database for attendance system
+Adds/updates students directly in the Supabase (PostgreSQL) database.
 """
 
-import csv
+import sys
 from pathlib import Path
+
+# Add project root to path so backend modules are importable
+sys.path.append(str(Path(__file__).parent.parent))
+
+from backend.database import SessionLocal, init_db
+from backend.models import Student, FaceEncoding, AttendanceRecord
+
 
 class StudentDatabase:
     def __init__(self):
-        """Initialize student database manager"""
-        self.base_dir = Path(__file__).parent.parent
-        self.data_dir = self.base_dir / "data"
-        self.known_faces_dir = self.data_dir / "known_faces"
-        self.students_file = self.data_dir / "students.csv"
-        
-        # Ensure directories exist
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        
-    def get_available_students(self):
-        """Get list of students from known_faces directory"""
-        if not self.known_faces_dir.exists():
-            return []
-        
-        students = [d.name for d in self.known_faces_dir.iterdir() if d.is_dir()]
-        return sorted(students)
-    
-    def load_existing_students(self):
-        """Load existing student database"""
-        students = {}
-        
-        if self.students_file.exists():
-            with open(self.students_file, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    students[row['Name']] = row
-        
-        return students
-    
-    def save_students(self, students):
-        """Save student database to CSV"""
-        fieldnames = ['RegNo', 'Name', 'Class', 'Email']
-        
-        with open(self.students_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            
-            for student in students.values():
-                writer.writerow(student)
-        
-        print(f"\n✓ Student database saved to: {self.students_file}")
-    
-    def add_student_interactive(self, students):
-        """Add a student interactively"""
-        available = self.get_available_students()
-        
-        if not available:
-            print("\n⚠ No student folders found in data/known_faces/")
-            print("Please run capture_faces.py first to capture student images")
-            return False
-        
-        print("\nAvailable students (from known_faces folders):")
-        for i, name in enumerate(available, 1):
-            status = "✓ In database" if name in students else "✗ Not in database"
-            print(f"  {i}. {name} - {status}")
-        
-        print("\n" + "="*60)
-        print("Add New Student")
-        print("="*60)
-        
-        # Select student name
+        """Initialize — connect to DB"""
+        print("\nConnecting to database...")
+        init_db()
+        self.db = SessionLocal()
+        print("✓ Connected")
+
+    def close(self):
+        self.db.close()
+
+    def get_trained_names(self):
+        """Get distinct names from face_encodings table in Supabase"""
+        rows = self.db.query(FaceEncoding.name).distinct().all()
+        return sorted([r.name for r in rows])
+
+    def list_students(self):
+        """List all students currently in the database"""
+        students = self.db.query(Student).order_by(Student.reg_no).all()
+        if not students:
+            print("\nNo students in database.")
+            return
+        print(f"\n{'='*70}")
+        print(f"{'RegNo':<18} {'Name':<25} {'Class':<12} {'Email':<20}")
+        print(f"{'='*70}")
+        for s in students:
+            print(f"{s.reg_no:<18} {s.name:<25} {s.class_name:<12} {s.email or '':<20}")
+        print(f"{'='*70}")
+        print(f"Total: {len(students)} student(s)")
+
+    def add_student_interactive(self):
+        """Interactively add or update a student in the database"""
+        trained_names = self.get_trained_names()
+
+        if trained_names:
+            print("\nTrained faces found in Supabase (face_encodings table):")
+            for i, name in enumerate(trained_names, 1):
+                exists = self.db.query(Student).filter(Student.name == name).first()
+                status = "✓ In DB" if exists else "✗ Not in DB"
+                print(f"  {i}. {name} — {status}")
+        else:
+            print("\n⚠ No trained faces found in Supabase. Run train_model.py first.")
+
+        print("\n" + "="*50)
+        print("Add / Update Student")
+        print("="*50)
+
+        # Name
         while True:
             name_input = input("\nEnter student name (or number from list above): ").strip()
-            
             if not name_input:
                 return False
-            
-            # Check if it's a number
             if name_input.isdigit():
                 idx = int(name_input) - 1
-                if 0 <= idx < len(available):
-                    name = available[idx]
+                if trained_names and 0 <= idx < len(trained_names):
+                    name = trained_names[idx]
                     break
                 else:
-                    print("Invalid number. Please try again.")
-            elif name_input in available:
+                    print("Invalid number.")
+            else:
                 name = name_input
                 break
-            else:
-                print(f"'{name_input}' not found in known_faces. Please choose from the list.")
-        
+
         # Check if already exists
-        if name in students:
-            print(f"\n⚠ {name} already exists in database:")
-            print(f"  RegNo: {students[name]['RegNo']}")
-            print(f"  Class: {students[name]['Class']}")
-            print(f"  Email: {students[name]['Email']}")
-            
+        existing = self.db.query(Student).filter(Student.name == name).first()
+        if existing:
+            print(f"\n⚠ {name} already exists in DB:")
+            print(f"   RegNo : {existing.reg_no}")
+            print(f"   Class : {existing.class_name}")
+            print(f"   Email : {existing.email}")
             update = input("\nUpdate this student? (y/n): ").strip().lower()
             if update != 'y':
                 return False
-        
-        # Get student details
+
+        # Registration number
         while True:
             regno = input("Registration Number: ").strip()
-            if regno:
-                # Check if regno already used
-                regno_exists = any(s['RegNo'] == regno for n, s in students.items() if n != name)
-                if regno_exists:
-                    print("⚠ Registration number already exists. Please use a unique RegNo.")
-                else:
-                    break
+            if not regno:
+                print("Registration number cannot be empty.")
+                continue
+            # Check uniqueness (ignore current student if updating)
+            duplicate = self.db.query(Student).filter(
+                Student.reg_no == regno
+            ).first()
+            if duplicate and duplicate.name != name:
+                print(f"⚠ RegNo '{regno}' already used by {duplicate.name}. Use a unique RegNo.")
             else:
-                print("Registration number cannot be empty")
-        
-        class_name = input("Class/Section: ").strip()
-        email = input("Email (optional): ").strip()
-        
-        # Add to database
-        students[name] = {
-            'RegNo': regno,
-            'Name': name,
-            'Class': class_name,
-            'Email': email
-        }
-        
-        print(f"\n✓ Added {name} to database")
-        return True
-    
-    def setup(self):
-        """Main setup function"""
-        print("\n" + "="*60)
-        print("Student Database Setup")
-        print("="*60)
-        
-        # Load existing students
-        students = self.load_existing_students()
-        
-        if students:
-            print(f"\nFound {len(students)} existing students in database")
+                break
+
+        class_name = input("Class/Section (e.g. AIML-A): ").strip()
+        email = input("Email (optional): ").strip() or None
+
+        if existing:
+            # Update
+            existing.reg_no = regno
+            existing.class_name = class_name
+            existing.email = email
+            self.db.commit()
+            print(f"\n✓ Updated {name} in database")
         else:
-            print("\nNo existing database found. Creating new database...")
-        
-        # Interactive loop
+            # Insert
+            student = Student(
+                reg_no=regno,
+                name=name,
+                class_name=class_name,
+                email=email
+            )
+            self.db.add(student)
+            self.db.commit()
+            print(f"\n✓ Added {name} to database")
+
+        return True
+
+    def delete_student_interactive(self):
+        """Delete a student from the database"""
+        self.list_students()
+        regno = input("\nEnter RegNo of student to delete (or blank to cancel): ").strip()
+        if not regno:
+            return
+
+        student = self.db.query(Student).filter(Student.reg_no == regno).first()
+        if not student:
+            print(f"No student found with RegNo '{regno}'")
+            return
+
+        confirm = input(f"Delete {student.name} ({regno})? (y/n): ").strip().lower()
+        if confirm == 'y':
+            # 1. Delete attendance records (NOT NULL FK — must go first)
+            rec_count = self.db.query(AttendanceRecord).filter(AttendanceRecord.reg_no == regno).delete()
+            # 2. Delete face encodings
+            enc_count = self.db.query(FaceEncoding).filter(FaceEncoding.name == student.name).delete()
+            # 3. Delete student
+            self.db.delete(student)
+            self.db.commit()
+            print(f"✓ Deleted {student.name}")
+            print(f"  └─ {rec_count} attendance record(s) removed")
+            print(f"  └─ {enc_count} face encoding(s) removed")
+
+    def setup(self):
+        """Main interactive menu"""
+        print("\n" + "="*50)
+        print("  AttendNet — Student Manager (Supabase)")
+        print("="*50)
+
         while True:
-            print("\n" + "="*60)
-            print("Options:")
-            print("  1. Add new student")
+            print("\nOptions:")
+            print("  1. Add / Update student")
             print("  2. View all students")
-            print("  3. Save and exit")
-            print("  4. Exit without saving")
-            print("="*60)
-            
+            print("  3. Delete a student")
+            print("  4. Exit")
+
             choice = input("\nSelect option: ").strip()
-            
+
             if choice == '1':
-                self.add_student_interactive(students)
-            
+                self.add_student_interactive()
             elif choice == '2':
-                if not students:
-                    print("\nNo students in database")
-                else:
-                    print(f"\n{'='*60}")
-                    print(f"{'RegNo':<15} {'Name':<20} {'Class':<15} {'Email':<30}")
-                    print(f"{'='*60}")
-                    for student in students.values():
-                        print(f"{student['RegNo']:<15} {student['Name']:<20} "
-                              f"{student['Class']:<15} {student['Email']:<30}")
-                    print(f"{'='*60}")
-                    print(f"Total: {len(students)} students")
-            
+                self.list_students()
             elif choice == '3':
-                if students:
-                    self.save_students(students)
-                    print(f"\n✓ Database saved with {len(students)} students")
-                else:
-                    print("\n⚠ No students to save")
-                break
-            
+                self.delete_student_interactive()
             elif choice == '4':
-                print("\nExiting without saving...")
+                print("\nExiting...")
                 break
-            
             else:
-                print("Invalid option. Please try again.")
+                print("Invalid option.")
+
+        self.close()
+
 
 def main():
-    """Main function"""
     db = StudentDatabase()
     db.setup()
+
 
 if __name__ == "__main__":
     main()

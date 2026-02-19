@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import pickle
+import shutil
 from pathlib import Path
 from keras_facenet import FaceNet
 import urllib.request
@@ -237,28 +238,57 @@ class FaceTrainer:
             pickle.dump(data, f)
         print(f"✓ Local backup saved to: {output_path}")
 
+    def cleanup_known_faces(self):
+        """Delete face image folders for processed people after successful training"""
+        processed_people = set(item["name"] for item in self.new_encodings)
+        if not processed_people:
+            return
+
+        confirm = input("\nDelete known_faces images for trained students to save space? (y/n): ").strip().lower()
+        if confirm != 'y':
+            print("Skipping cleanup — images kept.")
+            return
+
+        deleted = []
+        for person in processed_people:
+            folder = self.data_dir / person
+            if folder.exists():
+                shutil.rmtree(folder)
+                deleted.append(person)
+                print(f"  ✓ Deleted images for: {person}")
+
+        # Remove parent known_faces/ dir if now empty
+        if self.data_dir.exists() and not any(self.data_dir.iterdir()):
+            self.data_dir.rmdir()
+            print("  ✓ Removed empty known_faces/ directory")
+
+        print(f"\n✓ Cleanup done — {len(deleted)} folder(s) deleted")
+
     def train(self):
         """Main training function"""
         print("\n" + "="*60)
         print("Face Recognition - Model Training")
         print("="*60)
-        
+
         # Ensure tables exist (helpful if running locally newly)
         init_db()
-        
+
         # Load and process images
         if not self.process_images():
             return False
-        
+
         # Save to Database
         if self.save_encodings_to_db():
-             # Save local backup as well
+            # Save local backup as well
             self.save_local_backup()
-            
+
             print(f"\n{'='*60}")
             print("✓ Training completed successfully!")
             print(f"{'='*60}")
             print("\nEncodings are now in the database and accessible by the backend.")
+
+            # Offer to clean up raw face images
+            self.cleanup_known_faces()
             return True
         else:
             return False
