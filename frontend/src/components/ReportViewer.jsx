@@ -65,7 +65,7 @@ export default function ReportViewer() {
         <div className="min-h-screen bg-gray-50">
             <header className="bg-white shadow-sm border-b border-gray-200">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                         <div>
                             <div className="flex items-center gap-4">
                                 <button
@@ -82,7 +82,7 @@ export default function ReportViewer() {
                         </div>
                         <button
                             onClick={handleDownload}
-                            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium"
+                            className="w-full sm:w-auto px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium"
                         >
                             Download Excel
                         </button>
@@ -92,7 +92,7 @@ export default function ReportViewer() {
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
                     <div className="bg-white p-6 rounded-xl shadow-xs border border-gray-200">
                         <p className="text-sm font-medium text-gray-500">Total Students</p>
                         <p className="text-3xl font-bold text-gray-900">{report.total_students}</p>
@@ -121,10 +121,10 @@ export default function ReportViewer() {
                             <thead className="bg-gray-50">
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Reg No</th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell">Name</th>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Marked By</th>
                                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Time</th>
+                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Marked By</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
@@ -133,7 +133,7 @@ export default function ReportViewer() {
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                             {record.reg_no}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 hidden md:table-cell">
                                             {record.name}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -145,10 +145,10 @@ export default function ReportViewer() {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {record.marked_by}
+                                            {record.marked_at ? new Date(record.marked_at).toLocaleTimeString() : '-'}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {record.marked_at ? new Date(record.marked_at).toLocaleTimeString() : '-'}
+                                            {record.marked_by}
                                         </td>
                                     </tr>
                                 ))}
