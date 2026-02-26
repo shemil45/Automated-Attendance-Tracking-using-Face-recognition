@@ -196,8 +196,8 @@ export default function AttendanceSession() {
                     <div className="space-y-6">
                         {/* Camera View */}
                         <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
-                            <div className="bg-linear-to-r from-indigo-600 to-purple-600 px-6 py-4">
-                                <h2 className="text-xl font-bold text-white">Live Camera Feed</h2>
+                            <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
+                                <h2 className="text-xl font-semibold text-gray-800">Live Camera Feed</h2>
                             </div>
 
                             <div className="p-4">
@@ -240,9 +240,9 @@ export default function AttendanceSession() {
 
                     {/* Right Column - Student List */}
                     <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
-                        <div className="bg-linear-to-r from-purple-600 to-pink-600 px-6 py-4">
-                            <h2 className="text-xl font-bold text-white">Student Attendance</h2>
-                            <p className="text-sm text-purple-100">
+                        <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
+                            <h2 className="text-xl font-semibold text-gray-800">Student Attendance</h2>
+                            <p className="text-sm text-gray-500">
                                 {initialLoading ? 'Loading...' : `Total: ${students.length} students`}
                             </p>
                         </div>

@@ -38,7 +38,6 @@ export default function Dashboard() {
                 todayTimetable.date,
                 period.period
             );
-            // Navigate to the session page, passing session data via router state
             navigate(`/session/${response.data.id}`, { state: { session: response.data } });
         } catch (err) {
             alert('Failed to start session: ' + (err.response?.data?.detail || err.message));
@@ -65,8 +64,6 @@ export default function Dashboard() {
     const handleDownloadReport = async (sessionId) => {
         try {
             const response = await reportsAPI.exportSession(sessionId);
-
-            // Create download link
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
@@ -80,20 +77,25 @@ export default function Dashboard() {
     };
 
     const getStatusBadge = (status) => {
-        const badges = {
-            not_started: 'bg-gray-500/20 text-gray-700 border-gray-300',
-            ongoing: 'bg-yellow-500/20 text-yellow-700 border-yellow-300',
-            completed: 'bg-green-500/20 text-green-700 border-green-300',
+        const styles = {
+            not_started: { bg: '#F2F2F7', color: '#6E6E73', dot: '#AEAEB2' },
+            ongoing: { bg: '#FFF3CD', color: '#856404', dot: '#FF9500' },
+            completed: { bg: '#D1F5DC', color: '#1A7A3D', dot: '#34C759' },
         };
-
         const labels = {
             not_started: 'Not Started',
             ongoing: 'Ongoing',
             completed: 'Completed',
         };
-
+        const s = styles[status];
         return (
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${badges[status]}`}>
+            <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                padding: '3px 10px', borderRadius: '20px',
+                background: s.bg, color: s.color,
+                fontSize: '12px', fontWeight: 500, letterSpacing: '0.01em',
+            }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.dot, flexShrink: 0 }} />
                 {labels[status]}
             </span>
         );
@@ -102,204 +104,235 @@ export default function Dashboard() {
     const getActionButton = (period) => {
         if (period.status === 'not_started') {
             return (
-                <button
-                    onClick={() => handleStartSession(period)}
-                    className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
-                >
+                <button onClick={() => handleStartSession(period)} style={styles.btnPrimary}>
                     Start Attendance
                 </button>
             );
         } else if (period.status === 'ongoing') {
             return (
-                <button
-                    onClick={() => handleStartSession(period)}
-                    className="w-full px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-medium"
-                >
+                <button onClick={() => handleStartSession(period)} style={{ ...styles.btnPrimary, background: '#FF9500' }}>
                     Open Session
                 </button>
             );
         } else if (period.status === 'completed') {
             return (
-                <button
-                    onClick={() => handleViewReport(period)}
-                    className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium"
-                >
+                <button onClick={() => handleViewReport(period)} style={{ ...styles.btnPrimary, background: '#34C759' }}>
                     View Report
                 </button>
             );
         }
     };
 
-
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                <div className="text-center">
-                    <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-                    <p className="mt-4 text-gray-600">Loading timetable...</p>
+            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F5F5F7' }}>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{
+                        width: 44, height: 44, borderRadius: '50%',
+                        border: '3px solid #E5E5EA',
+                        borderTopColor: '#007AFF',
+                        animation: 'spin 0.8s linear infinite',
+                        margin: '0 auto',
+                    }} />
+                    <p style={{ marginTop: 16, color: '#6E6E73', fontSize: 14, fontFamily: styles.font }}>Loading timetable…</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100">
-            {/* Header */}
-            <header className="bg-white shadow-sm border-b border-gray-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <div className="flex justify-between items-center">
+        <div style={{ minHeight: '100vh', background: '#F5F5F7', fontFamily: styles.font }}>
+
+            {/* ── Header ── */}
+            <header style={{
+                background: '#1e3a8a',
+                borderBottom: '1px solid rgba(0,0,0,0.18)',
+                position: 'sticky', top: 0, zIndex: 100,
+            }}>
+                <div style={styles.container}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0' }}>
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-900">AttendNet</h1>
-                            <p className="text-sm text-gray-600">Welcome, {className}</p>
+                            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.3px' }}>
+                                AttendNet
+                            </h1>
+                            <p style={{ margin: '2px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.65)' }}>
+                                Welcome, {className}
+                            </p>
                         </div>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={auth.logout}
-                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium"
-                            >
-                                Logout
-                            </button>
-                        </div>
+                        <button
+                            onClick={auth.logout}
+                            style={styles.btnSecondaryOnDark}
+                        >
+                            Logout
+                        </button>
                     </div>
                 </div>
             </header>
 
-            {/* Main Content */}
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* Today's Timetable Section */}
-                <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden mb-8">
-                    <div className="bg-linear-to-r from-indigo-600 to-purple-600 px-6 py-4">
-                        <h2 className="text-xl font-bold text-white">Today's Schedule</h2>
-                        <p className="text-indigo-100 text-sm">
-                            {todayTimetable && new Date(todayTimetable.date).toLocaleDateString('en-US', {
-                                weekday: 'long',
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                            })}
-                        </p>
+            {/* ── Main ── */}
+            <main style={{ ...styles.container, paddingTop: 48, paddingBottom: 48 }}>
+
+                {/* Today's Schedule */}
+                <section style={styles.card}>
+                    <div style={styles.cardHeader}>
+                        <div>
+                            <h2 style={styles.cardTitle}>Today's Schedule</h2>
+                            <p style={styles.cardSubtitle}>
+                                {todayTimetable && new Date(todayTimetable.date).toLocaleDateString('en-US', {
+                                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+                                })}
+                            </p>
+                        </div>
                     </div>
 
                     {error && (
-                        <div className="bg-red-50 border-l-4 border-red-500 p-4">
-                            <p className="text-red-700">{error}</p>
+                        <div style={{ margin: '0 16px 16px', padding: '12px 16px', background: '#FFF0F0', borderRadius: 10, borderLeft: '3px solid #FF3B30' }}>
+                            <p style={{ margin: 0, color: '#FF3B30', fontSize: 14 }}>{error}</p>
                         </div>
                     )}
 
-                    {/* Mobile Card Layout (shown only on small screens) */}
-                    <div className="block md:hidden divide-y divide-gray-200">
+                    {/* Mobile Cards */}
+                    <div className="block md:hidden" style={{ borderTop: '1px solid #F2F2F7' }}>
                         {todayTimetable?.periods.map((period) => (
-                            <div key={period.id} className="p-4 hover:bg-gray-50 transition">
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="font-semibold text-gray-900">Period {period.period}</span>
+                            <div key={period.id} style={{ padding: '16px', borderBottom: '1px solid #F2F2F7' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                    <span style={{ fontWeight: 600, color: '#1C1C1E', fontSize: 14 }}>Period {period.period}</span>
                                     {getStatusBadge(period.status)}
                                 </div>
-                                <p className="text-sm text-gray-500 mb-1">{period.start_time} - {period.end_time}</p>
-                                <p className="text-sm font-medium text-gray-900">{period.subject_name}</p>
-                                <p className="text-xs text-gray-500 mb-3">{period.subject_code}</p>
-                                <div>{getActionButton(period)}</div>
+                                <p style={{ margin: '0 0 2px', fontSize: 13, color: '#6E6E73' }}>{period.start_time} – {period.end_time}</p>
+                                <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 500, color: '#1C1C1E' }}>{period.subject_name}</p>
+                                <p style={{ margin: '0 0 14px', fontSize: 12, color: '#AEAEB2' }}>{period.subject_code}</p>
+                                {getActionButton(period)}
                             </div>
                         ))}
                     </div>
 
-                    {/* Desktop Table Layout (shown on md and above) */}
-                    <div className="hidden md:block overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-gray-50 border-b border-gray-200">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Period</th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Time</th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Subject</th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
+                    {/* Desktop Table */}
+                    <div className="hidden md:block" style={{ overflowX: 'auto', borderTop: '1px solid #F2F2F7' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ background: '#F9F9FB' }}>
+                                    {['Period', 'Time', 'Subject', 'Status', 'Action'].map(h => (
+                                        <th key={h} style={styles.th}>{h}</th>
+                                    ))}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-200">
-                                {todayTimetable?.periods.map((period) => (
-                                    <tr key={period.id} className="hover:bg-gray-50 transition">
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="font-semibold text-gray-900">Period {period.period}</span>
+                            <tbody>
+                                {todayTimetable?.periods.map((period, i) => (
+                                    <tr key={period.id} style={{ background: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                                        <td style={styles.td}>
+                                            <span style={{ fontWeight: 600, color: '#1C1C1E', fontSize: 14 }}>Period {period.period}</span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                            {period.start_time} - {period.end_time}
+                                        <td style={styles.td}>
+                                            <span style={{ fontSize: 13, color: '#6E6E73' }}>{period.start_time} – {period.end_time}</span>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="text-sm font-medium text-gray-900">{period.subject_name}</div>
-                                            <div className="text-xs text-gray-500">{period.subject_code}</div>
+                                        <td style={styles.td}>
+                                            <div style={{ fontSize: 14, fontWeight: 500, color: '#1C1C1E' }}>{period.subject_name}</div>
+                                            <div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 2 }}>{period.subject_code}</div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            {getStatusBadge(period.status)}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            {getActionButton(period)}
-                                        </td>
+                                        <td style={styles.td}>{getStatusBadge(period.status)}</td>
+                                        <td style={styles.td}>{getActionButton(period)}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
-                </div>
+                </section>
 
-                {/* Previous Reports Section */}
-                <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
-                    <div className="bg-linear-to-r from-purple-600 to-pink-600 px-6 py-4">
-                        <h2 className="text-xl font-bold text-white">Previous Attendance Reports</h2>
+                {/* Previous Reports */}
+                <section style={{ ...styles.card, marginTop: 24 }}>
+                    <div style={styles.cardHeader}>
+                        <div>
+                            <h2 style={styles.cardTitle}>Previous Attendance Reports</h2>
+                            <p style={styles.cardSubtitle}>Search by date to browse past sessions</p>
+                        </div>
                     </div>
 
-                    <div className="p-4 sm:p-6">
-                        <div className="flex flex-col sm:flex-row gap-3 sm:items-end mb-6">
-                            <div className="flex-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <div style={{ padding: '20px 24px' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginBottom: 24 }}>
+                            <div style={{ flex: 1, minWidth: 180 }}>
+                                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#3C3C43', marginBottom: 6 }}>
                                     Select Date
                                 </label>
                                 <input
                                     type="date"
                                     value={selectedDate}
                                     onChange={(e) => setSelectedDate(e.target.value)}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                    style={styles.input}
                                 />
                             </div>
                             <button
                                 onClick={loadSessionsByDate}
                                 disabled={!selectedDate}
-                                className="w-full sm:w-auto px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                style={{
+                                    ...styles.btnPrimary,
+                                    opacity: !selectedDate ? 0.4 : 1,
+                                    cursor: !selectedDate ? 'not-allowed' : 'pointer',
+                                    width: 'auto', padding: '10px 22px',
+                                }}
                             >
                                 Load Sessions
                             </button>
                         </div>
 
                         {hasSearched && sessions.length === 0 && (
-                            <div className="flex flex-col items-center justify-center py-12 text-center">
-                                <div className="text-5xl mb-4">📭</div>
-                                <h3 className="text-lg font-semibold text-gray-700">No sessions recorded</h3>
-                                <p className="text-sm text-gray-400 mt-1">No attendance sessions were found for this date.</p>
+                            <div style={{ textAlign: 'center', padding: '48px 0' }}>
+                                <div style={{ fontSize: 44, marginBottom: 12 }}>📭</div>
+                                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#1C1C1E' }}>No sessions recorded</h3>
+                                <p style={{ margin: '6px 0 0', fontSize: 13, color: '#AEAEB2' }}>No attendance sessions were found for this date.</p>
                             </div>
                         )}
 
                         {sessions.length > 0 && (
-                            <div className="space-y-3">
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                                gap: 16,
+                            }}>
                                 {sessions.map((session) => (
-                                    <div key={session.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                        <div className="flex-1 min-w-0">
-                                            <h4 className="font-semibold text-gray-900">
-                                                Period {session.period} - {session.subject_name}
-                                            </h4>
-                                            <p className="text-sm text-gray-600">
-                                                {session.start_time} - {session.end_time} | {session.subject_code}
-                                            </p>
+                                    <div key={session.id} className="session-card" style={styles.sessionCard}>
+                                        {/* Card top row: Period title + subject code badge */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                                            <span style={{ fontSize: '1rem', fontWeight: 600, color: '#1F2937' }}>
+                                                Period {session.period}
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.75rem', fontWeight: 400, color: '#1D4ED8',
+                                                background: '#EFF6FF', borderRadius: 6,
+                                                padding: '2px 8px',
+                                            }}>
+                                                {session.subject_code}
+                                            </span>
                                         </div>
-                                        <div className="flex gap-2 shrink-0">
+
+                                        {/* Subject name */}
+                                        <p style={{ margin: '0 0 4px', fontSize: '0.875rem', fontWeight: 400, color: '#4B5563' }}>
+                                            {session.subject_name}
+                                        </p>
+
+                                        {/* Time */}
+                                        <p style={{ margin: '0 0 16px', fontSize: '0.875rem', fontWeight: 400, color: '#4B5563' }}>
+                                            {session.start_time} – {session.end_time}
+                                        </p>
+
+                                        {/* Action buttons */}
+                                        <div style={{ display: 'flex', gap: 8 }}>
                                             <button
                                                 onClick={() => navigate(`/report/${session.id}`)}
-                                                className="flex-1 sm:flex-none px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium"
+                                                style={styles.cardBtnView}
                                             >
-                                                View
+                                                👁 View
                                             </button>
                                             <button
                                                 onClick={() => handleDownloadReport(session.id)}
-                                                className="flex-1 sm:flex-none px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
+                                                style={styles.cardBtnExcel}
                                             >
-                                                Download Excel
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                    <polyline points="7 10 12 15 17 10" />
+                                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                                </svg>
+                                                Excel
                                             </button>
                                         </div>
                                     </div>
@@ -307,8 +340,167 @@ export default function Dashboard() {
                             </div>
                         )}
                     </div>
-                </div>
+                </section>
             </main>
+
+            <style>{`
+                @keyframes spin { to { transform: rotate(360deg); } }
+                * { box-sizing: border-box; }
+                .session-card:hover {
+                    box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+                    transform: translateY(-2px);
+                }
+            `}</style>
         </div>
     );
 }
+
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const styles = {
+    font: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif",
+
+    container: {
+        width: '100%',
+        margin: '0 auto',
+        padding: '0 32px',
+    },
+
+    card: {
+        background: '#FFFFFF',
+        borderRadius: 16,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04)',
+        overflow: 'hidden',
+        border: '1px solid rgba(0,0,0,0.06)',
+    },
+
+    cardHeader: {
+        padding: '20px 24px',
+        borderBottom: '1px solid #F2F2F7',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+
+    cardTitle: {
+        margin: 0,
+        fontSize: 17,
+        fontWeight: 700,
+        color: '#1C1C1E',
+        letterSpacing: '-0.2px',
+    },
+
+    cardSubtitle: {
+        margin: '3px 0 0',
+        fontSize: 13,
+        color: '#6E6E73',
+    },
+
+    th: {
+        padding: '10px 20px',
+        textAlign: 'left',
+        fontSize: 11,
+        fontWeight: 600,
+        color: '#6E6E73',
+        textTransform: 'uppercase',
+        letterSpacing: '0.06em',
+        borderBottom: '1px solid #F2F2F7',
+    },
+
+    td: {
+        padding: '14px 20px',
+        borderBottom: '1px solid #F2F2F7',
+        verticalAlign: 'middle',
+    },
+
+    btnPrimary: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '8px 16px',
+        background: '#007AFF',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 9,
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: 'pointer',
+        letterSpacing: '-0.1px',
+        transition: 'filter 0.15s',
+        width: '100%',
+    },
+
+    btnSecondary: {
+        padding: '7px 16px',
+        background: '#F2F2F7',
+        color: '#3C3C43',
+        border: 'none',
+        borderRadius: 9,
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: 'pointer',
+        transition: 'background 0.15s',
+    },
+
+    btnSecondaryOnDark: {
+        padding: '7px 16px',
+        background: 'rgba(255,255,255,0.15)',
+        color: '#FFFFFF',
+        border: '1px solid rgba(255,255,255,0.25)',
+        borderRadius: 9,
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: 'pointer',
+        transition: 'background 0.15s',
+    },
+
+    input: {
+        width: '100%',
+        padding: '10px 14px',
+        border: '1px solid #D1D1D6',
+        borderRadius: 10,
+        fontSize: 14,
+        color: '#1C1C1E',
+        background: '#F9F9FB',
+        outline: 'none',
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
+    },
+
+    sessionCard: {
+        background: '#FFFFFF',
+        borderRadius: 14,
+        border: '1px solid #E5E5EA',
+        padding: '18px 18px 16px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+        cursor: 'default',
+    },
+
+    cardBtnView: {
+        flex: 1,
+        padding: '8px 0',
+        background: '#fff',
+        color: '#1C1C1E',
+        border: '1px solid #D1D1D6',
+        borderRadius: 9,
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: 'pointer',
+        textAlign: 'center',
+    },
+
+    cardBtnExcel: {
+        flex: 1,
+        padding: '8px 0',
+        background: '#16A34A',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 9,
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+    },
+};
