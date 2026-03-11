@@ -2,6 +2,28 @@
 Face Recognition Service
 Integrates with existing FaceNet recognition system for attendance
 """
+import os
+import warnings
+
+# ── Suppress TensorFlow noise BEFORE any TF/Keras imports ──────────────────
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'        # Silence C++ SSE/AVX/FMA messages
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'       # Silence oneDNN optimisation note
+warnings.filterwarnings('ignore')                # Silence Python-level DeprecationWarnings
+
+# Suppress absl (TF's internal logging library)
+try:
+    import absl.logging
+    absl.logging.set_verbosity(absl.logging.ERROR)
+except ImportError:
+    pass
+
+# Suppress TF Python deprecation warnings (e.g. tf.placeholder → tf.compat.v1)
+try:
+    import tensorflow as tf
+    tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+except Exception:
+    pass
+
 import cv2
 import numpy as np
 from pathlib import Path
@@ -13,6 +35,23 @@ from typing import Dict, Set, Optional
 from .database import SessionLocal, init_db
 from .models import FaceEncoding
 
+# ── Module-level FaceNet singleton (loaded once per process) ────────────────
+_facenet_instance: FaceNet | None = None
+
+def _get_facenet() -> FaceNet:
+    """Return a shared FaceNet instance, loading it only on first call."""
+    global _facenet_instance
+    if _facenet_instance is None:
+        print("Loading FaceNet model (first run — this may take a moment)...")
+        _facenet_instance = FaceNet()
+        # ── Warm-up: run one dummy inference so TF JIT-compiles the graph NOW ──
+        # Without this, the very first real frame takes ~7 seconds instead of ~130ms
+        print("Warming up FaceNet model...")
+        _dummy = np.zeros((1, 160, 160, 3), dtype=np.uint8)
+        _facenet_instance.embeddings(_dummy)
+        print("✓ FaceNet ready (first inference will be fast)")
+    return _facenet_instance
+
 class FaceRecognitionService:
     """Service for real-time face recognition during attendance sessions"""
     
@@ -20,10 +59,8 @@ class FaceRecognitionService:
         """Initialize the face recognition service"""
         self.base_dir = Path(__file__).parent.parent
         
-        # Initialize FaceNet
-        print("Loading FaceNet model...")
-        self.facenet = FaceNet()
-        print("✓ FaceNet model loaded")
+        # Initialize FaceNet (uses module-level singleton — loads only once)
+        self.facenet = _get_facenet()
         
         # Initialize OpenCV DNN Face Detector
         print("Loading face detector...")

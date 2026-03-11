@@ -14,6 +14,8 @@ export default function AttendanceSession() {
     const [initialLoading, setInitialLoading] = useState(true);
     const videoRef = useRef(null);
     const streamRef = useRef(null);
+    const isActiveRef = useRef(true);   // flipped to false on unmount — stops frame sending immediately
+    const isSendingRef = useRef(false); // true while a recognize request is in-flight — prevents backlog
 
     // If session wasn't passed via state (e.g. direct URL / page refresh), fetch it
     useEffect(() => {
@@ -27,16 +29,18 @@ export default function AttendanceSession() {
     useEffect(() => {
         if (!session) return; // Wait until session data is loaded
 
+        isActiveRef.current = true;
         startCamera();
         loadStudents();
 
-        // Poll for updates every 3 seconds
-        const updateInterval = setInterval(loadStudents, 3000);
+        // Poll for updates every 1.5 seconds (was 3s — halved for snappier UI)
+        const updateInterval = setInterval(loadStudents, 1500);
 
         // Frame capture loop (send frame every 1 second)
         const frameInterval = setInterval(captureAndSendFrame, 1000);
 
         return () => {
+            isActiveRef.current = false; // Stop frame sending immediately on unmount
             clearInterval(updateInterval);
             clearInterval(frameInterval);
             stopCamera();
@@ -46,7 +50,7 @@ export default function AttendanceSession() {
     const startCamera = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: { width: 1280, height: 720 }
+                video: { width: 640, height: 480 }  // 640×480 is plenty for face detection and uploads faster
             });
 
             if (videoRef.current) {
@@ -66,6 +70,8 @@ export default function AttendanceSession() {
     };
 
     const captureAndSendFrame = async () => {
+        // Don't send if the component is unmounted OR a previous request is still in-flight
+        if (!isActiveRef.current || isSendingRef.current) return;
         if (!videoRef.current || !streamRef.current) return;
 
         try {
@@ -76,18 +82,18 @@ export default function AttendanceSession() {
             ctx.drawImage(videoRef.current, 0, 0);
 
             canvas.toBlob(async (blob) => {
-                if (!blob) return;
+                if (!blob || !isActiveRef.current) return;
 
+                isSendingRef.current = true;
                 const formData = new FormData();
                 formData.append('file', blob, 'frame.jpg');
 
                 try {
                     await attendanceAPI.recognizeFace(session.id, formData);
-                    // We don't need to do anything with the response because 
-                    // the loadStudents polling will pick up any changes
                 } catch (err) {
-                    // Silent fail for individual frames to avoid spamming alerts
                     console.error('Frame recognition error:', err);
+                } finally {
+                    isSendingRef.current = false;
                 }
             }, 'image/jpeg', 0.8);
         } catch (err) {

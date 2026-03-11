@@ -16,6 +16,9 @@ from .database import get_db, init_db
 from .face_recognition_service import face_recognition_service
 from .seed_data import seed_database
 
+# Per-session concurrency locks (prevents frame backlog on /recognize)
+_session_locks: dict = {}
+
 # Create FastAPI app
 app = FastAPI(title="AttendNet API", version="1.0.0")
 
@@ -305,62 +308,73 @@ async def recognize_faces(
     db: Session = Depends(get_db)
 ):
     """Process a video frame for face recognition"""
-    # Verify session ownership
-    session = db.query(models.AttendanceSession).filter(
-        models.AttendanceSession.id == session_id,
-        models.AttendanceSession.class_name == current_class.class_name
-    ).first()
+    # ── Per-session concurrency guard ────────────────────────────────────────
+    # If a frame is already being processed for this session, skip this one.
+    # This prevents a queue backlog when inference takes longer than the send interval.
+    import asyncio
+    if session_id not in _session_locks:
+        _session_locks[session_id] = asyncio.Lock()
+    lock = _session_locks[session_id]
+    if lock.locked():
+        return {"processed": False, "reason": "busy"}
     
-    if not session or session.status != models.SessionStatusEnum.ONGOING:
-        return {"processed": False, "message": "Session not active"}
-    
-    # Callback to handle recognition
-    def on_face_recognized(name: str):
-        # Find student
-        student = db.query(models.Student).filter(
-            models.Student.name == name
-        ).first()
-        if not student:
-            return
-            
-        # Check if already present
-        existing_record = db.query(models.AttendanceRecord).filter(
-            models.AttendanceRecord.session_id == session_id,
-            models.AttendanceRecord.reg_no == student.reg_no
+    async with lock:
+        # Verify session ownership
+        session = db.query(models.AttendanceSession).filter(
+            models.AttendanceSession.id == session_id,
+            models.AttendanceSession.class_name == current_class.class_name
         ).first()
         
-        if existing_record:
-            if existing_record.status == models.AttendanceStatusEnum.ABSENT:
-                existing_record.status = models.AttendanceStatusEnum.PRESENT
-                existing_record.marked_by = models.MarkedByEnum.SYSTEM
-                existing_record.marked_at = datetime.utcnow()
+        if not session or session.status != models.SessionStatusEnum.ONGOING:
+            return {"processed": False, "message": "Session not active"}
+        
+        # Callback to handle recognition
+        def on_face_recognized(name: str):
+            # Find student
+            student = db.query(models.Student).filter(
+                models.Student.name == name
+            ).first()
+            if not student:
+                return
+                
+            # Check if already present
+            existing_record = db.query(models.AttendanceRecord).filter(
+                models.AttendanceRecord.session_id == session_id,
+                models.AttendanceRecord.reg_no == student.reg_no
+            ).first()
+            
+            if existing_record:
+                if existing_record.status == models.AttendanceStatusEnum.ABSENT:
+                    existing_record.status = models.AttendanceStatusEnum.PRESENT
+                    existing_record.marked_by = models.MarkedByEnum.SYSTEM
+                    existing_record.marked_at = datetime.utcnow()
+                    db.commit()
+            else:
+                # Create new record
+                record = models.AttendanceRecord(
+                    session_id=session_id,
+                    reg_no=student.reg_no,
+                    status=models.AttendanceStatusEnum.PRESENT,
+                    marked_by=models.MarkedByEnum.SYSTEM,
+                    marked_at=datetime.utcnow()
+                )
+                db.add(record)
                 db.commit()
-        else:
-            # Create new record
-            record = models.AttendanceRecord(
-                session_id=session_id,
-                reg_no=student.reg_no,
-                status=models.AttendanceStatusEnum.PRESENT,
-                marked_by=models.MarkedByEnum.SYSTEM,
-                marked_at=datetime.utcnow()
-            )
-            db.add(record)
-            db.commit()
 
-    # Read image content
-    contents = await file.read()
-    
-    # Process the frame
-    try:
-        recognized_names = face_recognition_service.process_frame(
-            session_id, 
-            contents, 
-            on_face_recognized
-        )
-        return {"processed": True, "recognized": recognized_names}
-    except Exception as e:
-        print(f"Error processing frame: {e}")
-        return {"processed": False, "error": str(e)}
+        # Read image content
+        contents = await file.read()
+        
+        # Process the frame
+        try:
+            recognized_names = face_recognition_service.process_frame(
+                session_id, 
+                contents, 
+                on_face_recognized
+            )
+            return {"processed": True, "recognized": recognized_names}
+        except Exception as e:
+            print(f"Error processing frame: {e}")
+            return {"processed": False, "error": str(e)}
 
 
 @app.post("/api/attendance/end-session/{session_id}", response_model=schemas.SessionResponse)
