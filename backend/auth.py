@@ -20,6 +20,14 @@ ACCESS_TOKEN_EXPIRE_HOURS = 8
 # Bearer token scheme
 security = HTTPBearer()
 
+# In-memory token blacklist — tokens added here are immediately rejected
+_token_blacklist: set = set()
+
+
+def blacklist_token(token: str) -> None:
+    """Add a token to the blacklist (call on logout)"""
+    _token_blacklist.add(token)
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a hash"""
@@ -85,16 +93,21 @@ async def get_current_class(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     token = credentials.credentials
+
+    # Reject blacklisted tokens immediately
+    if token in _token_blacklist:
+        raise credentials_exception
+
     class_name = decode_access_token(token)
-    
+
     if class_name is None:
         raise credentials_exception
-    
+
     class_obj = db.query(models.Class).filter(models.Class.class_name == class_name).first()
-    
+
     if class_obj is None:
         raise credentials_exception
-    
+
     return class_obj

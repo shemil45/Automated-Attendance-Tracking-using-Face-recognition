@@ -160,7 +160,7 @@ export default function Dashboard() {
                             </p>
                         </div>
                         <button
-                            onClick={auth.logout}
+                            onClick={() => auth.logout()}
                             style={styles.btnSecondaryOnDark}
                         >
                             Logout

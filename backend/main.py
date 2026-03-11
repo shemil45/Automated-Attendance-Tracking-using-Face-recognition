@@ -5,6 +5,7 @@ Faculty-facing attendance portal backend
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from datetime import date, datetime, time, timedelta
 from typing import List
@@ -64,6 +65,15 @@ def login(request: schemas.LoginRequest, db: Session = Depends(get_db)):
         access_token=access_token,
         class_name=class_obj.class_name
     )
+
+
+@app.post("/api/auth/logout")
+def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(auth.security),
+):
+    """Invalidate the current session token server-side"""
+    auth.blacklist_token(credentials.credentials)
+    return {"message": "Logged out successfully"}
 
 
 # ==================== Timetable Endpoints ====================

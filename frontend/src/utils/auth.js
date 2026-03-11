@@ -1,43 +1,52 @@
 /**
  * Authentication utilities
+ * Uses sessionStorage so tokens are automatically cleared when the tab is closed.
  */
+import api from './api';
 
 export const auth = {
     /**
-     * Login user
+     * Login user — store token in sessionStorage
      */
     login: (token, className) => {
-        localStorage.setItem('access_token', token);
-        localStorage.setItem('class_name', className);
+        sessionStorage.setItem('access_token', token);
+        sessionStorage.setItem('class_name', className);
     },
 
     /**
-     * Logout user
+     * Logout user — blacklist token on the server, then clear local storage
      */
-    logout: () => {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('class_name');
-        window.location.href = '/';
+    logout: async () => {
+        try {
+            // Tell the backend to invalidate this token
+            await api.post('/auth/logout');
+        } catch (_) {
+            // Even if the request fails, clear local state
+        } finally {
+            sessionStorage.removeItem('access_token');
+            sessionStorage.removeItem('class_name');
+            window.location.href = '/';
+        }
     },
 
     /**
      * Get stored token
      */
     getToken: () => {
-        return localStorage.getItem('access_token');
+        return sessionStorage.getItem('access_token');
     },
 
     /**
      * Get stored class name
      */
     getClassName: () => {
-        return localStorage.getItem('class_name');
+        return sessionStorage.getItem('class_name');
     },
 
     /**
      * Check if user is authenticated
      */
     isAuthenticated: () => {
-        return !!localStorage.getItem('access_token');
+        return !!sessionStorage.getItem('access_token');
     },
 };
