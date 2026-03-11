@@ -209,19 +209,20 @@ class FaceRecognitionService:
     def process_frame(self, session_id: int, image_bytes: bytes, recognized_callback) -> list:
         """
         Process a single frame from the frontend
-        
+
         Args:
             session_id: The attendance session ID
             image_bytes: Raw image bytes from upload
             recognized_callback: Callback function(name) when a face is recognized
-            
+
         Returns:
-            list: List of recognized names in this frame
+            list: List of dicts with keys 'name' (str|None), 'box' {x,y,w,h,fw,fh}
+                  representing each detected face and its bounding box in image coords.
         """
         # Decode image
         nparr = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
+
         if frame is None:
             return []
 
@@ -231,58 +232,72 @@ class FaceRecognitionService:
                 'recognized_students': set()
             }
             self.session_locks[session_id] = threading.Lock()
-            
-        recognized_in_frame = []
-        
+
+        face_results = []
+
         # Detect faces
+        h, w = frame.shape[:2]
         blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300), (104.0, 177.0, 123.0))
         self.face_detector.setInput(blob)
         detections = self.face_detector.forward()
-        
+
         for i in range(detections.shape[2]):
             confidence = detections[0, 0, i, 2]
-            
+
             if confidence > 0.5:
-                h, w = frame.shape[:2]
                 box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
                 (x, y, x2, y2) = box.astype("int")
-                
+
                 # Add padding
                 padding = 20
                 x_pad = max(0, x - padding)
                 y_pad = max(0, y - padding)
                 x2_pad = min(w, x2 + padding)
                 y2_pad = min(h, y2 + padding)
-                
+
                 # Extract face
                 face = frame[y_pad:y2_pad, x_pad:x2_pad]
-                
+
                 if face.size == 0:
                     continue
-                
+
                 # Get face encoding
                 face_encoding = self.get_face_encoding(face)
-                
+
+                recognized_name = None
                 if face_encoding is not None:
                     # Recognize face
                     name, distance = self.recognize_face(face_encoding)
-                    
+
                     if name:
-                        recognized_in_frame.append(name)
-                        
+                        recognized_name = name
+
                         # Check if already recognized in this session
                         is_new = False
                         with self.session_locks[session_id]:
                             if name not in self.active_sessions[session_id]['recognized_students']:
                                 self.active_sessions[session_id]['recognized_students'].add(name)
                                 is_new = True
-                        
+
                         # Call callback if new
                         if is_new:
                             recognized_callback(name)
                             print(f"Session {session_id}: Recognized {name}")
 
-        return recognized_in_frame
+                # Record result with bounding box (padded coords, image dimensions for scaling)
+                face_results.append({
+                    "name": recognized_name,
+                    "box": {
+                        "x": int(x_pad),
+                        "y": int(y_pad),
+                        "w": int(x2_pad - x_pad),
+                        "h": int(y2_pad - y_pad),
+                        "fw": int(w),
+                        "fh": int(h)
+                    }
+                })
+
+        return face_results
     
     def get_recognized_students(self, session_id: int) -> Set[str]:
         """Get the set of recognized student names for a session"""

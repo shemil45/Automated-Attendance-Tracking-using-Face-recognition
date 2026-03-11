@@ -13,9 +13,14 @@ export default function AttendanceSession() {
     const [loading, setLoading] = useState(false);
     const [initialLoading, setInitialLoading] = useState(true);
     const videoRef = useRef(null);
+    const canvasRef = useRef(null);
     const streamRef = useRef(null);
-    const isActiveRef = useRef(true);   // flipped to false on unmount — stops frame sending immediately
-    const isSendingRef = useRef(false); // true while a recognize request is in-flight — prevents backlog
+    const isActiveRef = useRef(true);    // flipped to false on unmount
+    const isSendingRef = useRef(false);   // true while a request is in-flight
+    const facesRef = useRef([]);          // latest face list from backend
+    const faceNameCacheRef = useRef({}); // name → { cx, cy, lastSeen } — prevents Unknown flicker
+    const rafRef = useRef(null);          // rAF handle for draw loop
+    const lastFaceUpdateRef = useRef(0); // timestamp of last backend response
 
     // If session wasn't passed via state (e.g. direct URL / page refresh), fetch it
     useEffect(() => {
@@ -27,22 +32,21 @@ export default function AttendanceSession() {
     }, []);
 
     useEffect(() => {
-        if (!session) return; // Wait until session data is loaded
+        if (!session) return;
 
         isActiveRef.current = true;
         startCamera();
         loadStudents();
+        startDrawLoop();
 
-        // Poll for updates every 1.5 seconds (was 3s — halved for snappier UI)
         const updateInterval = setInterval(loadStudents, 1500);
-
-        // Frame capture loop (send frame every 1 second)
         const frameInterval = setInterval(captureAndSendFrame, 1000);
 
         return () => {
-            isActiveRef.current = false; // Stop frame sending immediately on unmount
+            isActiveRef.current = false;
             clearInterval(updateInterval);
             clearInterval(frameInterval);
+            stopDrawLoop();
             stopCamera();
         };
     }, [session]);
@@ -69,19 +73,123 @@ export default function AttendanceSession() {
         }
     };
 
+    // ── Continuous draw loop (requestAnimationFrame) ─────────────────────────
+    // Draws from facesRef so boxes never flicker between API responses.
+    const drawFaceBoxes = () => {
+        const canvas = canvasRef.current;
+        const video = videoRef.current;
+        if (!canvas || !video) return;
+
+        // Keep canvas pixel size synced to displayed element size
+        if (canvas.width !== video.clientWidth || canvas.height !== video.clientHeight) {
+            canvas.width = video.clientWidth || 640;
+            canvas.height = video.clientHeight || 360;
+        }
+        const cw = canvas.width;
+        const ch = canvas.height;
+        if (!cw || !ch) return;
+
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, cw, ch);
+
+        // If no face update in >3s, clear facesRef to hide stale boxes
+        if (Date.now() - lastFaceUpdateRef.current > 3000) {
+            facesRef.current = [];
+        }
+
+        const now = Date.now();
+        const CACHE_TTL = 5000; // ms to keep a recognized name "sticky"
+
+        facesRef.current.forEach(({ name, box }) => {
+            if (!box) return;
+            const { x, y, w, h, fw, fh } = box;
+
+            const scaleX = cw / fw;
+            const scaleY = ch / fh;
+
+            // Mirror X — video is CSS-flipped with -scale-x-100
+            const drawX = cw - (x + w) * scaleX;
+            const drawY = y * scaleY;
+            const drawW = w * scaleX;
+            const drawH = h * scaleY;
+            const faceCx = drawX + drawW / 2;
+            const faceCy = drawY + drawH / 2;
+
+            // Resolve name: if backend said null, check name cache for a nearby match
+            let resolvedName = name;
+            if (!resolvedName) {
+                let bestMatch = null;
+                let bestDist = Infinity;
+                for (const [n, cached] of Object.entries(faceNameCacheRef.current)) {
+                    if (now - cached.lastSeen > CACHE_TTL) continue;
+                    const dist = Math.hypot(cached.cx - faceCx, cached.cy - faceCy);
+                    const threshold = Math.max(drawW, drawH) * 0.8;
+                    if (dist < threshold && dist < bestDist) {
+                        bestDist = dist;
+                        bestMatch = n;
+                    }
+                }
+                resolvedName = bestMatch;
+            } else {
+                // Update cache with latest position
+                faceNameCacheRef.current[resolvedName] = { cx: faceCx, cy: faceCy, lastSeen: now };
+            }
+
+            const isKnown = !!resolvedName;
+            const color = isKnown ? '#22c55e' : '#ef4444';
+            const label = resolvedName || 'Unknown';
+
+            // Draw bounding box
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3.5;
+            ctx.setLineDash(isKnown ? [] : [6, 4]);
+            ctx.strokeRect(drawX, drawY, drawW, drawH);
+            ctx.setLineDash([]);
+
+            // Draw label pill
+            ctx.font = 'bold 13px Inter, system-ui, sans-serif';
+            const textWidth = ctx.measureText(label).width;
+            const padX = 8, padY = 5, labelH = 22;
+            const labelY = drawY > labelH + 4 ? drawY - labelH - 4 : drawY + drawH + 4;
+
+            ctx.fillStyle = isKnown ? 'rgba(22,163,74,0.88)' : 'rgba(239,68,68,0.88)';
+            ctx.beginPath();
+            ctx.roundRect(drawX, labelY, textWidth + padX * 2, labelH, 4);
+            ctx.fill();
+
+            ctx.fillStyle = '#fff';
+            ctx.fillText(label, drawX + padX, labelY + labelH - padY);
+        });
+    };
+
+    const startDrawLoop = () => {
+        const loop = () => {
+            if (!isActiveRef.current) return;
+            drawFaceBoxes();
+            rafRef.current = requestAnimationFrame(loop);
+        };
+        rafRef.current = requestAnimationFrame(loop);
+    };
+
+    const stopDrawLoop = () => {
+        if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+        }
+    };
+
     const captureAndSendFrame = async () => {
-        // Don't send if the component is unmounted OR a previous request is still in-flight
         if (!isActiveRef.current || isSendingRef.current) return;
         if (!videoRef.current || !streamRef.current) return;
 
         try {
-            const canvas = document.createElement('canvas');
-            canvas.width = videoRef.current.videoWidth;
-            canvas.height = videoRef.current.videoHeight;
-            const ctx = canvas.getContext('2d');
+            const offscreen = document.createElement('canvas');
+            offscreen.width = videoRef.current.videoWidth;
+            offscreen.height = videoRef.current.videoHeight;
+            const ctx = offscreen.getContext('2d');
             ctx.drawImage(videoRef.current, 0, 0);
 
-            canvas.toBlob(async (blob) => {
+            offscreen.toBlob(async (blob) => {
                 if (!blob || !isActiveRef.current) return;
 
                 isSendingRef.current = true;
@@ -89,7 +197,12 @@ export default function AttendanceSession() {
                 formData.append('file', blob, 'frame.jpg');
 
                 try {
-                    await attendanceAPI.recognizeFace(session.id, formData);
+                    const res = await attendanceAPI.recognizeFace(session.id, formData);
+                    if (res?.data?.faces) {
+                        // Update the ref — the rAF loop will pick it up on next paint
+                        facesRef.current = res.data.faces;
+                        lastFaceUpdateRef.current = Date.now();
+                    }
                 } catch (err) {
                     console.error('Frame recognition error:', err);
                 } finally {
@@ -214,6 +327,13 @@ export default function AttendanceSession() {
                                         playsInline
                                         muted
                                         className="w-full h-full object-cover transform -scale-x-100"
+                                    />
+
+                                    {/* Bounding box canvas overlay */}
+                                    <canvas
+                                        ref={canvasRef}
+                                        className="absolute inset-0 w-full h-full pointer-events-none"
+                                        style={{ mixBlendMode: 'normal' }}
                                     />
 
                                     {/* Overlay Info */}

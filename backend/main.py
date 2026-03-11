@@ -366,12 +366,13 @@ async def recognize_faces(
         
         # Process the frame
         try:
-            recognized_names = face_recognition_service.process_frame(
-                session_id, 
-                contents, 
+            face_results = face_recognition_service.process_frame(
+                session_id,
+                contents,
                 on_face_recognized
             )
-            return {"processed": True, "recognized": recognized_names}
+            recognized_names = [f["name"] for f in face_results if f["name"]]
+            return {"processed": True, "recognized": recognized_names, "faces": face_results}
         except Exception as e:
             print(f"Error processing frame: {e}")
             return {"processed": False, "error": str(e)}
