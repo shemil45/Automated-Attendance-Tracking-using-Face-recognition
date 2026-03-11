@@ -20,7 +20,7 @@ A faculty-facing web portal that automates student attendance using real-time fa
 
 Before you begin, make sure you have the following installed:
 
-- **Python 3.11.x** — [Download](https://www.python.org/downloads/)
+- **Python 3.11.9** — [Download](https://www.python.org/downloads/release/python-3119/)
 - **Node.js 18+** — [Download](https://nodejs.org/)
 - **Git** — [Download](https://git-scm.com/)
 - A **webcam** for face recognition
