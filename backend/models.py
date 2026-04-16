@@ -1,7 +1,7 @@
 """
 SQLAlchemy ORM Models
 """
-from sqlalchemy import Column, Integer, String, DateTime, Date, Time, Boolean, Enum, ForeignKey, LargeBinary
+from sqlalchemy import Column, Integer, String, DateTime, Date, Time, Boolean, Enum, ForeignKey, LargeBinary, CheckConstraint, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -15,6 +15,8 @@ class DayEnum(str, enum.Enum):
     WED = "WED"
     THU = "THU"
     FRI = "FRI"
+    SAT = "SAT"
+    SUN = "SUN"
 
 
 class SessionStatusEnum(str, enum.Enum):
@@ -50,6 +52,16 @@ class Class(Base):
     sessions = relationship("AttendanceSession", back_populates="class_")
 
 
+class AdminUser(Base):
+    """Admin accounts for managing classes and timetables"""
+    __tablename__ = "admin_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Student(Base):
     """Students table"""
     __tablename__ = "students"
@@ -82,8 +94,13 @@ class Timetable(Base):
     # Relationships
     class_ = relationship("Class", back_populates="timetable")
 
-    # Composite unique constraint
     __table_args__ = (
+        UniqueConstraint("class_name", "day", "period", name="timetable_class_day_period_unique"),
+        CheckConstraint("start_time < end_time", name="timetable_valid_time_range"),
+        CheckConstraint(
+            "is_break = false OR (subject_code IS NULL AND subject_name IS NULL)",
+            name="timetable_break_has_no_subject",
+        ),
         {'sqlite_autoincrement': True},
     )
 

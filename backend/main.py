@@ -13,6 +13,7 @@ import pandas as pd
 import io
 
 from . import models, schemas, auth
+from .admin import router as admin_router, seed_admin_user
 from .database import get_db, init_db
 from .face_recognition_service import face_recognition_service
 from .seed_data import seed_database
@@ -22,6 +23,7 @@ _session_locks: dict = {}
 
 # Create FastAPI app
 app = FastAPI(title="AttendNet API", version="1.0.0")
+app.include_router(admin_router)
 
 # CORS configuration
 app.add_middleware(
@@ -42,6 +44,11 @@ def startup_event():
         print("✓ Database seeded")
     except Exception as e:
         print(f"Warning: Database seeding failed: {e}")
+    try:
+        seed_admin_user()
+        print("✓ Admin user seeded")
+    except Exception as e:
+        print(f"Warning: Admin user seeding failed: {e}")
     print("✓ Database initialized")
 
 
@@ -59,7 +66,7 @@ def login(request: schemas.LoginRequest, db: Session = Depends(get_db)):
         )
     
     # Create access token
-    access_token = auth.create_access_token(data={"sub": class_obj.class_name})
+    access_token = auth.create_access_token(data={"sub": class_obj.class_name, "role": "class"})
     
     return schemas.TokenResponse(
         access_token=access_token,

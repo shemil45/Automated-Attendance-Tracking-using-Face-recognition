@@ -1,7 +1,7 @@
 """
 Pydantic schemas for request/response validation
 """
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from datetime import datetime, date, time
 from typing import Optional, List
 from enum import Enum
@@ -14,6 +14,8 @@ class DayEnum(str, Enum):
     WED = "WED"
     THU = "THU"
     FRI = "FRI"
+    SAT = "SAT"
+    SUN = "SUN"
 
 
 class SessionStatusEnum(str, Enum):
@@ -45,6 +47,68 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     class_name: str
+
+
+class AdminTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    username: str
+
+
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class ClassCreate(BaseModel):
+    class_name: str
+    password: str
+
+    @field_validator("class_name")
+    @classmethod
+    def validate_class_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Class name is required")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        if len(value) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return value
+
+
+class ClassUpdate(BaseModel):
+    class_name: Optional[str] = None
+    password: Optional[str] = None
+
+    @field_validator("class_name")
+    @classmethod
+    def validate_optional_class_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("Class name cannot be empty")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def validate_optional_password(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and len(value) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return value
+
+
+class ClassResponse(BaseModel):
+    id: int
+    class_name: str
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
 # Timetable
@@ -94,6 +158,60 @@ class TodayTimetable(BaseModel):
                 data['date'] = data['date'].isoformat()
             return super().model_validate(data)
         return super().model_validate(obj)
+
+
+class TimetableEntryRequest(BaseModel):
+    day: DayEnum
+    period: int
+    subject_code: Optional[str] = None
+    subject_name: Optional[str] = None
+    start_time: time
+    end_time: time
+    is_break: bool = False
+
+    @field_validator("period")
+    @classmethod
+    def validate_period(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("Period number must be at least 1")
+        return value
+
+    @field_validator("subject_code", "subject_name", mode="before")
+    @classmethod
+    def normalize_blank_strings(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
+
+    @model_validator(mode="after")
+    def validate_timetable_entry(self):
+        if self.start_time >= self.end_time:
+            raise ValueError("Start time must be before end time")
+        if self.is_break and (self.subject_code or self.subject_name):
+            raise ValueError("Break periods must not contain subjects")
+        return self
+
+
+class TimetableEntryUpdate(BaseModel):
+    day: Optional[DayEnum] = None
+    period: Optional[int] = None
+    subject_code: Optional[str] = None
+    subject_name: Optional[str] = None
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    is_break: Optional[bool] = None
+
+    @field_validator("period")
+    @classmethod
+    def validate_optional_period(cls, value: Optional[int]) -> Optional[int]:
+        if value is not None and value < 1:
+            raise ValueError("Period number must be at least 1")
+        return value
+
+
+class AdminTimetableEntry(TimetableEntry):
+    class_name: str
 
 
 # Attendance Session

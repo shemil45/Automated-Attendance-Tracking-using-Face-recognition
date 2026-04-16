@@ -56,18 +56,25 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def decode_access_token(token: str) -> Optional[str]:
-    """Decode a JWT token and return the class_name"""
+def decode_token_payload(token: str) -> Optional[dict]:
+    """Decode a JWT token and return its payload"""
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        class_name: str = payload.get("sub")
-        
-        if class_name is None:
-            return None
-        
-        return class_name
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
         return None
+
+
+def decode_access_token(token: str) -> Optional[str]:
+    """Decode a class JWT token and return the class_name"""
+    payload = decode_token_payload(token)
+    if not payload:
+        return None
+
+    if payload.get("role") not in (None, "class"):
+        return None
+
+    class_name: str = payload.get("sub")
+    return class_name
 
 
 def authenticate_class(db: Session, class_name: str, password: str) -> Optional[models.Class]:
@@ -81,6 +88,50 @@ def authenticate_class(db: Session, class_name: str, password: str) -> Optional[
         return None
     
     return class_obj
+
+
+def authenticate_admin(db: Session, username: str, password: str) -> Optional[models.AdminUser]:
+    """Authenticate an admin user"""
+    admin = db.query(models.AdminUser).filter(models.AdminUser.username == username).first()
+
+    if not admin:
+        return None
+
+    if not verify_password(password, admin.password_hash):
+        return None
+
+    return admin
+
+
+async def get_current_admin(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> models.AdminUser:
+    """Dependency to get the current authenticated admin"""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate admin credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    token = credentials.credentials
+
+    if token in _token_blacklist:
+        raise credentials_exception
+
+    payload = decode_token_payload(token)
+    if not payload or payload.get("role") != "admin":
+        raise credentials_exception
+
+    username = payload.get("sub")
+    if not username:
+        raise credentials_exception
+
+    admin = db.query(models.AdminUser).filter(models.AdminUser.username == username).first()
+    if admin is None:
+        raise credentials_exception
+
+    return admin
 
 
 async def get_current_class(

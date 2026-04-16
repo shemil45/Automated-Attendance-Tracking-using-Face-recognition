@@ -50,3 +50,28 @@ export const auth = {
         return !!sessionStorage.getItem('access_token');
     },
 };
+
+export const adminAuth = {
+    login: (token, username) => {
+        sessionStorage.setItem('admin_access_token', token);
+        sessionStorage.setItem('admin_username', username);
+    },
+
+    logout: () => {
+        sessionStorage.removeItem('admin_access_token');
+        sessionStorage.removeItem('admin_username');
+        window.location.href = '/admin/login';
+    },
+
+    getToken: () => {
+        return sessionStorage.getItem('admin_access_token');
+    },
+
+    getUsername: () => {
+        return sessionStorage.getItem('admin_username');
+    },
+
+    isAuthenticated: () => {
+        return !!sessionStorage.getItem('admin_access_token');
+    },
+};

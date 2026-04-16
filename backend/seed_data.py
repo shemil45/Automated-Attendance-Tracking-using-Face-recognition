@@ -106,7 +106,7 @@ def seed_database():
                 ("MON", 2, "8:50", "9:40", "21ECO105T", "Fiber Optics and Optoelectronics", False),
                 ("MON", 3, "9:50", "10:40", "21CSE355T", "Data Mining and Analytics", False),
                 ("MON", 4, "10:40", "11:30", "21CSC303J", "Software Engineering and Project Management", False),
-                ("MON", 5, "12:20", "1:10", None, "LUNCH", True),
+                ("MON", 5, "12:20", "13:10", None, None, True),
                 ("MON", 6, "1:10", "2:00", None, None, False),  # Free
                 ("MON", 7, "2:00", "2:50", "21CSP302L", "Project", False),
                 ("MON", 8, "2:50", "3:40", None, None, False),  # Free
@@ -116,7 +116,7 @@ def seed_database():
                 ("TUE", 2, "8:50", "9:40", "21CSE356T", "Natural Language Processing", False),
                 ("TUE", 3, "9:50", "10:40", "21ECO105T", "Fiber Optics and Optoelectronics", False),
                 ("TUE", 4, "10:40", "11:30", "21CSS303T", "Data Science", False),
-                ("TUE", 5, "12:20", "1:10", None, "LUNCH", True),
+                ("TUE", 5, "12:20", "13:10", None, None, True),
                 ("TUE", 6, "1:10", "2:00", None, None, False),  # Free
                 ("TUE", 7, "2:00", "2:50", None, None, False),  # Free
                 ("TUE", 8, "2:50", "3:40", None, None, False),  # Free
@@ -126,7 +126,7 @@ def seed_database():
                 ("WED", 2, "8:50", "9:40", "21ECO105T", "Fiber Optics and Optoelectronics", False),
                 ("WED", 3, "9:50", "10:40", "21CSE356T", "Natural Language Processing", False),
                 ("WED", 4, "10:40", "11:30", "21CSC303J", "Software Engineering and Project Management", False),
-                ("WED", 5, "12:20", "1:10", None, "LUNCH", True),
+                ("WED", 5, "12:20", "13:10", None, None, True),
                 ("WED", 6, "1:10", "2:00", None, None, False),  # Free
                 ("WED", 7, "2:00", "2:50", "21LEM302T", "Indian Traditional Knowledge", False),
                 ("WED", 8, "2:50", "3:40", None, None, False),  # Free
@@ -136,7 +136,7 @@ def seed_database():
                 ("THU", 2, "8:50", "9:40", None, None, False),  # Free
                 ("THU", 3, "9:50", "10:40", "21CSP302L", "Project", False),
                 ("THU", 4, "10:40", "11:30", None, None, False),  # Free
-                ("THU", 5, "12:20", "1:10", None, "LUNCH", True),
+                ("THU", 5, "12:20", "13:10", None, None, True),
                 ("THU", 6, "1:10", "2:00", "21CSC304J", "Compiler Design", False),
                 ("THU", 7, "2:00", "2:50", None, None, False),  # Free
                 ("THU", 8, "2:50", "3:40", "21PDM302L", "Employability Skills and Practices", False),
@@ -146,7 +146,7 @@ def seed_database():
                 ("FRI", 2, "8:50", "9:40", "21CSE355T", "Data Mining and Analytics", False),
                 ("FRI", 3, "9:50", "10:40", "21CSC304J", "Compiler Design", False),
                 ("FRI", 4, "10:40", "11:30", None, None, False),  # Free
-                ("FRI", 5, "12:20", "1:10", None, "LUNCH", True),
+                ("FRI", 5, "12:20", "13:10", None, None, True),
                 ("FRI", 6, "1:10", "2:00", None, None, False),  # Free
                 ("FRI", 7, "2:00", "2:50", None, None, False),  # Free
                 ("FRI", 8, "2:50", "3:40", None, None, False),  # Free

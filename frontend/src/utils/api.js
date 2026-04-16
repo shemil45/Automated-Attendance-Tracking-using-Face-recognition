@@ -1,11 +1,10 @@
 /**
- * API utility for making requests to backend
+ * API utility for making requests to backend.
  */
 import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
-// Create axios instance
 const api = axios.create({
     baseURL: API_BASE_URL,
     headers: {
@@ -13,35 +12,40 @@ const api = axios.create({
     },
 });
 
-// Request interceptor to add auth token
 api.interceptors.request.use(
     (config) => {
-        const token = sessionStorage.getItem('access_token');
+        const isAdminRequest = config.url?.startsWith('/admin');
+        const token = isAdminRequest
+            ? sessionStorage.getItem('admin_access_token')
+            : sessionStorage.getItem('access_token');
+
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
         return config;
     },
-    (error) => {
-        return Promise.reject(error);
-    }
+    (error) => Promise.reject(error)
 );
 
-// Response interceptor for error handling
 api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Unauthorized — clear token and redirect to login
-            sessionStorage.removeItem('access_token');
-            sessionStorage.removeItem('class_name');
-            window.location.href = '/';
+            const requestUrl = error.config?.url || '';
+            if (requestUrl.startsWith('/admin')) {
+                sessionStorage.removeItem('admin_access_token');
+                sessionStorage.removeItem('admin_username');
+                window.location.href = '/admin/login';
+            } else {
+                sessionStorage.removeItem('access_token');
+                sessionStorage.removeItem('class_name');
+                window.location.href = '/';
+            }
         }
         return Promise.reject(error);
     }
 );
 
-// Auth API
 export const authAPI = {
     login: (username, password) =>
         api.post('/auth/login', { username, password }),
@@ -49,12 +53,32 @@ export const authAPI = {
         api.post('/auth/logout'),
 };
 
-// Timetable API
+export const adminAPI = {
+    login: (username, password) =>
+        api.post('/admin/auth/login', { username, password }),
+    getClasses: () => api.get('/admin/classes'),
+    createClass: (className, password) =>
+        api.post('/admin/classes', { class_name: className, password }),
+    updateClass: (classId, payload) =>
+        api.patch(`/admin/classes/${classId}`, payload),
+    deleteClass: (classId) =>
+        api.delete(`/admin/classes/${classId}`),
+    getTimetable: (className) =>
+        api.get(`/admin/classes/${encodeURIComponent(className)}/timetable`),
+    replaceTimetable: (className, entries) =>
+        api.put(`/admin/classes/${encodeURIComponent(className)}/timetable`, entries),
+    createTimetableEntry: (className, entry) =>
+        api.post(`/admin/classes/${encodeURIComponent(className)}/timetable`, entry),
+    updateTimetableEntry: (entryId, entry) =>
+        api.patch(`/admin/timetable/${entryId}`, entry),
+    deleteTimetableEntry: (entryId) =>
+        api.delete(`/admin/timetable/${entryId}`),
+};
+
 export const timetableAPI = {
     getToday: () => api.get('/timetable/today'),
 };
 
-// Attendance API
 export const attendanceAPI = {
     startSession: (date, period, testMode = false) =>
         api.post('/attendance/start-session', { date, period, test_mode: testMode }),
@@ -75,7 +99,6 @@ export const attendanceAPI = {
         }),
 };
 
-// Reports API
 export const reportsAPI = {
     getSessions: (date) => api.get('/reports/sessions', { params: { date } }),
     getSessionReport: (sessionId) =>
@@ -86,7 +109,6 @@ export const reportsAPI = {
         }),
 };
 
-// Utility API
 export const utilityAPI = {
     reloadEncodings: () => api.post('/reload-encodings'),
     syncStudents: () => api.post('/students/sync'),
