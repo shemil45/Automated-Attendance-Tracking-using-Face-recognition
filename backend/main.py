@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import List
 import pandas as pd
 import io
@@ -102,16 +102,39 @@ def get_today_timetable(
     # Create session lookup by period
     session_by_period = {s.period: s for s in sessions}
     
+    SESSION_WINDOW_MINUTES = 10
+
+    # Current local time (as a naive time for comparison with timetable times)
+    now_local = datetime.now().time()
+
     # Build response
     periods = []
     for entry in timetable_entries:
         # Skip breaks and free periods for display purposes
         if entry.is_break or not entry.subject_code:
             continue
-        
+
         # Check if session exists
         session = session_by_period.get(entry.period)
-        
+
+        # ── Compute dynamic status ──────────────────────────────────────────
+        if session:
+            # Prefer the DB status for sessions that already exist
+            computed_status = session.status
+        else:
+            # Determine where we are relative to this period's window
+            deadline = (
+                datetime.combine(date.today(), entry.start_time)
+                + timedelta(minutes=SESSION_WINDOW_MINUTES)
+            ).time()
+
+            if now_local < entry.start_time:
+                computed_status = schemas.SessionStatusEnum.BEFORE_START
+            elif now_local <= deadline:
+                computed_status = schemas.SessionStatusEnum.NOT_STARTED  # window open → allow start
+            else:
+                computed_status = schemas.SessionStatusEnum.EXPIRED
+
         # Create period data dict with time strings
         period_dict = {
             'id': entry.id,
@@ -122,13 +145,13 @@ def get_today_timetable(
             'start_time': entry.start_time.strftime("%H:%M"),
             'end_time': entry.end_time.strftime("%H:%M"),
             'is_break': entry.is_break,
-            'status': session.status if session else schemas.SessionStatusEnum.NOT_STARTED,
+            'status': computed_status,
             'session_id': session.id if session else None
         }
-        
+
         period_data = schemas.TimetableEntry(**period_dict)
         periods.append(period_data)
-    
+
     return schemas.TodayTimetable(
         date=today.isoformat(),
         day=day_name,
@@ -156,9 +179,34 @@ def start_attendance_session(
     
     if not timetable_entry:
         raise HTTPException(status_code=404, detail="Timetable entry not found")
-    
+
     if timetable_entry.is_break or not timetable_entry.subject_code:
         raise HTTPException(status_code=400, detail="Cannot start session for break/free period")
+
+    # ── Time-window enforcement ────────────────────────────────────────────────
+    # Only enforce when test_mode is NOT active.
+    if not request.test_mode:
+        SESSION_WINDOW_MINUTES = 10
+        now_local = datetime.now().time()
+        start_t = timetable_entry.start_time
+        deadline_t = (
+            datetime.combine(date.today(), start_t)
+            + timedelta(minutes=SESSION_WINDOW_MINUTES)
+        ).time()
+
+        if now_local < start_t:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Too early to start this session. It begins at {start_t.strftime('%H:%M')}."
+            )
+        if now_local > deadline_t:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Session expired. The {SESSION_WINDOW_MINUTES}-minute start window "
+                    f"(from {start_t.strftime('%H:%M')} to {deadline_t.strftime('%H:%M')}) has closed."
+                )
+            )
     
     # Check if session already exists
     existing_session = db.query(models.AttendanceSession).filter(

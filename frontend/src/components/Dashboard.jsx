@@ -1,20 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { timetableAPI, attendanceAPI, reportsAPI } from '../utils/api';
 import { auth } from '../utils/auth';
+import { getSessionWindowStatus, canStartSession } from '../utils/sessionTime';
 
 export default function Dashboard() {
     const [todayTimetable, setTodayTimetable] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [showReports, setShowReports] = useState(false);
     const [selectedDate, setSelectedDate] = useState('');
     const [sessions, setSessions] = useState([]);
     const [hasSearched, setHasSearched] = useState(false);
 
-    const navigate = useNavigate();
+    // ── Test Mode ─────────────────────────────────────────────────────────────
+    const [testMode, setTestMode] = useState(
+        () => localStorage.getItem('attendnet_test_mode') === 'true'
+    );
 
+    // ── Live clock (ticks every 30 s so status badges auto-update) ───────────
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    const navigate = useNavigate();
     const className = auth.getClassName();
+
+    // Persist test mode in localStorage
+    useEffect(() => {
+        localStorage.setItem('attendnet_test_mode', testMode);
+    }, [testMode]);
+
+    // Tick the clock every 30 seconds
+    useEffect(() => {
+        const interval = setInterval(() => setCurrentTime(new Date()), 30_000);
+        return () => clearInterval(interval);
+    }, []);
 
     useEffect(() => {
         loadTodayTimetable();
@@ -36,7 +54,8 @@ export default function Dashboard() {
         try {
             const response = await attendanceAPI.startSession(
                 todayTimetable.date,
-                period.period
+                period.period,
+                testMode          // pass test mode flag to API
             );
             navigate(`/session/${response.data.id}`, { state: { session: response.data } });
         } catch (err) {
@@ -76,51 +95,112 @@ export default function Dashboard() {
         }
     };
 
-    const getStatusBadge = (status) => {
-        const styles = {
-            not_started: { bg: '#F2F2F7', color: '#6E6E73', dot: '#AEAEB2' },
-            ongoing: { bg: '#FFF3CD', color: '#856404', dot: '#FF9500' },
-            completed: { bg: '#D1F5DC', color: '#1A7A3D', dot: '#34C759' },
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    /**
+     * Determine the *effective* window status for a period, merging the server
+     * response with the live client-side clock so the UI stays accurate even
+     * without a page refresh.
+     */
+    const getEffectiveStatus = useCallback((period) => {
+        // If a DB session exists, trust its status (ongoing / completed)
+        if (period.status === 'ongoing' || period.status === 'completed') {
+            return period.status;
+        }
+
+        // Recompute from live clock so status updates without a reload
+        const windowStatus = getSessionWindowStatus(period.start_time, currentTime);
+
+        if (windowStatus === 'before_start') return 'before_start';
+        if (windowStatus === 'open') return 'not_started'; // startable
+        return 'expired';
+    }, [currentTime]);
+
+    const getStatusBadge = (period) => {
+        const effectiveStatus = getEffectiveStatus(period);
+
+        const config = {
+            not_started:  { bg: '#FFF3CD', color: '#92400E', dot: '#F59E0B',  label: 'Open – Start Now' },
+            before_start: { bg: '#F2F2F7', color: '#6E6E73', dot: '#AEAEB2',  label: 'Not Started' },
+            ongoing:      { bg: '#D1FAE5', color: '#065F46', dot: '#10B981',  label: 'Ongoing' },
+            completed:    { bg: '#D1F5DC', color: '#1A7A3D', dot: '#34C759',  label: 'Completed' },
+            expired:      { bg: '#FFE4E4', color: '#991B1B', dot: '#EF4444',  label: 'Expired' },
         };
-        const labels = {
-            not_started: 'Not Started',
-            ongoing: 'Ongoing',
-            completed: 'Completed',
-        };
-        const s = styles[status];
+
+        const s = config[effectiveStatus] ?? config.before_start;
+
         return (
             <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                padding: '3px 10px', borderRadius: '20px',
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '3px 10px', borderRadius: 20,
                 background: s.bg, color: s.color,
-                fontSize: '12px', fontWeight: 500, letterSpacing: '0.01em',
+                fontSize: 12, fontWeight: 500, letterSpacing: '0.01em',
+                whiteSpace: 'nowrap',
             }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.dot, flexShrink: 0 }} />
-                {labels[status]}
+                {s.label}
             </span>
         );
     };
 
     const getActionButton = (period) => {
-        if (period.status === 'not_started') {
+        const effectiveStatus = getEffectiveStatus(period);
+
+        // ── Completed: always show View Report ──────────────────────────────
+        if (effectiveStatus === 'completed') {
             return (
-                <button onClick={() => handleStartSession(period)} style={styles.btnPrimary}>
-                    Start Attendance
-                </button>
-            );
-        } else if (period.status === 'ongoing') {
-            return (
-                <button onClick={() => handleStartSession(period)} style={{ ...styles.btnPrimary, background: '#FF9500' }}>
-                    Open Session
-                </button>
-            );
-        } else if (period.status === 'completed') {
-            return (
-                <button onClick={() => handleViewReport(period)} style={{ ...styles.btnPrimary, background: '#34C759' }}>
+                <button onClick={() => handleViewReport(period)}
+                    style={{ ...styles.btnPrimary, background: '#34C759' }}>
                     View Report
                 </button>
             );
         }
+
+        // ── Ongoing: re-open the session ────────────────────────────────────
+        if (effectiveStatus === 'ongoing') {
+            return (
+                <button onClick={() => handleStartSession(period)}
+                    style={{ ...styles.btnPrimary, background: '#10B981' }}>
+                    Open Session
+                </button>
+            );
+        }
+
+        // ── Not started & window open: allow start ───────────────────────────
+        if (effectiveStatus === 'not_started') {
+            return (
+                <button onClick={() => handleStartSession(period)}
+                    style={styles.btnPrimary}>
+                    Start Attendance
+                </button>
+            );
+        }
+
+        // ── Test-mode override: bypass restrictions ──────────────────────────
+        if (testMode && (effectiveStatus === 'expired' || effectiveStatus === 'before_start')) {
+            return (
+                <button onClick={() => handleStartSession(period)}
+                    style={{ ...styles.btnPrimary, background: '#F59E0B' }}>
+                    Start (Test Mode)
+                </button>
+            );
+        }
+
+        // ── Before start: disabled placeholder ──────────────────────────────
+        if (effectiveStatus === 'before_start') {
+            return (
+                <button disabled style={styles.btnDisabled}>
+                    Not Started Yet
+                </button>
+            );
+        }
+
+        // ── Expired: disabled placeholder ────────────────────────────────────
+        return (
+            <button disabled style={{ ...styles.btnDisabled, color: '#EF4444', borderColor: '#FECACA' }}>
+                Session Expired
+            </button>
+        );
     };
 
     if (loading) {
@@ -150,7 +230,9 @@ export default function Dashboard() {
                 position: 'sticky', top: 0, zIndex: 100,
             }}>
                 <div style={styles.container}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', gap: 12 }}>
+
+                        {/* Brand + greeting */}
                         <div>
                             <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.3px' }}>
                                 AttendNet
@@ -159,15 +241,82 @@ export default function Dashboard() {
                                 Welcome, {className}
                             </p>
                         </div>
-                        <button
-                            onClick={() => auth.logout()}
-                            style={styles.btnSecondaryOnDark}
-                        >
-                            Logout
-                        </button>
+
+                        {/* Right-side controls */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+
+                            {/* ── Test Mode Toggle ─────────────────────────────────── */}
+                            <div
+                                id="test-mode-toggle"
+                                title={testMode ? 'Test Mode ON – time restrictions bypassed' : 'Test Mode OFF – time restrictions enforced'}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    background: testMode ? 'rgba(245,158,11,0.18)' : 'rgba(255,255,255,0.10)',
+                                    border: `1px solid ${testMode ? 'rgba(245,158,11,0.55)' : 'rgba(255,255,255,0.20)'}`,
+                                    borderRadius: 10,
+                                    padding: '5px 12px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    userSelect: 'none',
+                                }}
+                                onClick={() => setTestMode(m => !m)}
+                            >
+                                {/* Toggle pill */}
+                                <div style={{
+                                    position: 'relative',
+                                    width: 36, height: 20,
+                                    background: testMode ? '#F59E0B' : 'rgba(255,255,255,0.25)',
+                                    borderRadius: 10,
+                                    transition: 'background 0.2s ease',
+                                    flexShrink: 0,
+                                }}>
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: 2, left: testMode ? 18 : 2,
+                                        width: 16, height: 16,
+                                        borderRadius: '50%',
+                                        background: '#fff',
+                                        transition: 'left 0.2s ease',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                                    }} />
+                                </div>
+
+                                <span style={{
+                                    fontSize: 12, fontWeight: 600,
+                                    color: testMode ? '#FCD34D' : 'rgba(255,255,255,0.75)',
+                                    letterSpacing: '0.02em',
+                                    transition: 'color 0.2s ease',
+                                }}>
+                                    {testMode ? 'TEST ON' : 'TEST OFF'}
+                                </span>
+                            </div>
+
+                            {/* Logout */}
+                            <button
+                                onClick={() => auth.logout()}
+                                style={styles.btnSecondaryOnDark}
+                            >
+                                Logout
+                            </button>
+                        </div>
                     </div>
                 </div>
             </header>
+
+            {/* ── Test Mode Banner ── */}
+            {testMode && (
+                <div style={{
+                    background: 'linear-gradient(90deg, #92400E 0%, #B45309 100%)',
+                    color: '#FEF3C7',
+                    textAlign: 'center',
+                    padding: '7px 16px',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    letterSpacing: '0.01em',
+                }}>
+                    ⚠️ Test Mode is <strong>ON</strong> — time restrictions are bypassed. All sessions can be started regardless of schedule.
+                </div>
+            )}
 
             {/* ── Main ── */}
             <main style={{ ...styles.container, paddingTop: 48, paddingBottom: 48 }}>
@@ -197,7 +346,7 @@ export default function Dashboard() {
                             <div key={period.id} style={{ padding: '16px', borderBottom: '1px solid #F2F2F7' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                                     <span style={{ fontWeight: 600, color: '#1C1C1E', fontSize: 14 }}>Period {period.period}</span>
-                                    {getStatusBadge(period.status)}
+                                    {getStatusBadge(period)}
                                 </div>
                                 <p style={{ margin: '0 0 2px', fontSize: 13, color: '#6E6E73' }}>{period.start_time} – {period.end_time}</p>
                                 <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 500, color: '#1C1C1E' }}>{period.subject_name}</p>
@@ -230,7 +379,7 @@ export default function Dashboard() {
                                             <div style={{ fontSize: 14, fontWeight: 500, color: '#1C1C1E' }}>{period.subject_name}</div>
                                             <div style={{ fontSize: 12, color: '#AEAEB2', marginTop: 2 }}>{period.subject_code}</div>
                                         </td>
-                                        <td style={styles.td}>{getStatusBadge(period.status)}</td>
+                                        <td style={styles.td}>{getStatusBadge(period)}</td>
                                         <td style={styles.td}>{getActionButton(period)}</td>
                                     </tr>
                                 ))}
@@ -350,6 +499,9 @@ export default function Dashboard() {
                     box-shadow: 0 6px 24px rgba(0,0,0,0.12);
                     transform: translateY(-2px);
                 }
+                #test-mode-toggle:hover {
+                    filter: brightness(1.1);
+                }
             `}</style>
         </div>
     );
@@ -427,6 +579,25 @@ const styles = {
         letterSpacing: '-0.1px',
         transition: 'filter 0.15s',
         width: '100%',
+        whiteSpace: 'nowrap',
+    },
+
+    btnDisabled: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '8px 16px',
+        background: '#F2F2F7',
+        color: '#8E8E93',
+        border: '1px solid #E5E5EA',
+        borderRadius: 9,
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: 'not-allowed',
+        letterSpacing: '-0.1px',
+        width: '100%',
+        whiteSpace: 'nowrap',
+        opacity: 0.85,
     },
 
     btnSecondary: {

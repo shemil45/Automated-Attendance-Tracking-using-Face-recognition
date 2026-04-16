@@ -21,6 +21,7 @@ class SessionStatusEnum(str, enum.Enum):
     NOT_STARTED = "not_started"
     ONGOING = "ongoing"
     COMPLETED = "completed"
+    EXPIRED = "expired"   # Computed status — not stored in DB rows
 
 
 class AttendanceStatusEnum(str, enum.Enum):

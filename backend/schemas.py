@@ -20,6 +20,8 @@ class SessionStatusEnum(str, Enum):
     NOT_STARTED = "not_started"
     ONGOING = "ongoing"
     COMPLETED = "completed"
+    EXPIRED = "expired"           # Computed only — never stored in DB
+    BEFORE_START = "before_start" # Computed only — period hasn't begun yet
 
 
 class AttendanceStatusEnum(str, Enum):
@@ -98,6 +100,7 @@ class TodayTimetable(BaseModel):
 class StartSessionRequest(BaseModel):
     date: date
     period: int
+    test_mode: bool = False  # When True, skip the 10-minute start-window check
 
 
 class SessionResponse(BaseModel):

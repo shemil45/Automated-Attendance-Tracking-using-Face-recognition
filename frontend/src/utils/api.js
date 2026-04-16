@@ -56,8 +56,8 @@ export const timetableAPI = {
 
 // Attendance API
 export const attendanceAPI = {
-    startSession: (date, period) =>
-        api.post('/attendance/start-session', { date, period }),
+    startSession: (date, period, testMode = false) =>
+        api.post('/attendance/start-session', { date, period, test_mode: testMode }),
     getSession: (sessionId) => api.get(`/attendance/session/${sessionId}`),
     endSession: (sessionId) =>
         api.post(`/attendance/end-session/${sessionId}`),
